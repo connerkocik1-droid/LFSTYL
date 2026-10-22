@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clone } from '@/lib/format';
-import { money } from '@/lib/logic';
+import { checkPayday, money } from '@/lib/logic';
 import type { State, Tab } from '@/lib/types';
 import { Sheets } from './sheets';
 import { Goals, Library, Money, Tasks, Today } from './tabs';
@@ -58,7 +58,7 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }
   // A new "today" from outside (midnight, app resumed) flows in without touching anything else.
   useEffect(() => {
     if (initial.today !== s.today && initial.today > s.today) {
-      upd((x) => { x.today = initial.today; if (!x.payPending && x.today >= x.incomes[0].next) x.payPending = true; });
+      upd((x) => { x.today = initial.today; checkPayday(x); });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.today]);

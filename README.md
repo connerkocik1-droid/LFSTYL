@@ -37,6 +37,7 @@ Not built yet, matching the design: weight detail, Library document and event de
 
 You create an account with your first name, last name and a 4-digit PIN (entered twice), and sign in on other devices with the same three. Email can be linked later.
 
+- **New accounts start empty:** no tasks, projects, goals, income, bills, wean-off plan or weigh-ins, and the Library folders are empty. The five budget categories exist at $0, since there's no screen yet for adding categories. The first budget period runs from sign-up until the first pay date you set under Money → Income and bills. The design's sample data appears only in `?demo=` screens.
 - **Sync:** the app saves every change on the device right away and to Supabase shortly after. On launch it uses whichever copy is newer. If it's offline, it opens with what's on the device.
 - **Security:** PINs are stored as bcrypt hashes. Five wrong PINs lock the account for 15 minutes. The tables are closed to the public API key; the app can only call `lfstyl_sign_up`, `lfstyl_sign_in`, `lfstyl_load` and `lfstyl_save`, which check the PIN or a session token first. A 4-digit PIN is still a short secret, so link an email or move to a longer secret before storing anything sensitive.
 - **Project:** the Supabase URL and publishable key are built in as defaults in `src/lib/persist.ts` (both are public values). `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` override them; set either to `off` to keep data on the device only.

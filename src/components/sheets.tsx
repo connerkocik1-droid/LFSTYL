@@ -68,7 +68,7 @@ function Opts({ opts, sel, onPick, h = 56 }: { opts: { id: string; name: string;
 
 function AddSheet() {
   const { s, upd } = useLf();
-  const lim = phaseInfo(s).limit;
+  const lim = phaseInfo(s)?.limit ?? null, of = (n: number) => (lim == null ? `${n}` : `${n} of ${lim}`);
   const tile = { height: 84, borderRadius: 20, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', padding: '14px 16px', textAlign: 'left' } as const;
   const T = (t: string, sub: string) => <><span className="disp up" style={{ fontSize: 28, lineHeight: 0.86 }}>{t}</span><span className="cap">{sub}</span></>;
   return (
@@ -80,7 +80,7 @@ function AddSheet() {
           <span style={{ font: '500 10px/1 var(--f-mono)', letterSpacing: '.08em' }}>AMOUNT · CATEGORY · DONE</span>
         </button>
         <button className="btn-fill" style={tile} onClick={() => upd((x) => { x.sheet = 'income'; x.draft = { amt: '', cat: null, note: '', y: false }; })}>{T('Income', 'LANDS IN UNASSIGNED')}</button>
-        <button className="btn-fill" style={tile} onClick={() => upd((x) => { R.pouch(x, 1); x.sheet = null; x.toast = { t: `Pouch logged · ${pouchesToday(x)} of ${lim} today` }; })}>{T('Pouch +1', `${pouchesToday(s)} OF ${lim} TODAY`)}</button>
+        <button className="btn-fill" style={tile} onClick={() => upd((x) => { R.pouch(x, 1); x.sheet = null; x.toast = { t: `Pouch logged · ${of(pouchesToday(x))} today` }; })}>{T('Pouch +1', `${of(pouchesToday(s))} TODAY`.toUpperCase())}</button>
         <button className="btn-fill" style={tile} onClick={() => upd((x) => { x.sheet = 'np'; })}>{T('Project', 'STEPS + BUY STEPS')}</button>
         <button className="btn-fill" style={tile} onClick={() => upd((x) => R.openStep(x, 'task', 'action'))}>{T('Task', 'ONE TO-DO')}</button>
       </div>
@@ -333,14 +333,18 @@ function DoneSheet() {
 function EdSheet() {
   const { s, dark, upd, patch } = useLf();
   const e = s.ed!, isInc = e.kind === 'inc', src = s.incomes[0];
-  const amt = parseFloat(String(e.amt).replace(/[$,]/g, '')) || 0, valid = /^\d{4}-\d{2}-\d{2}$/.test(e.date || ''), isPrim = isInc && e.id === src.id;
+  const amt = parseFloat(String(e.amt).replace(/[$,]/g, '')) || 0, valid = /^\d{4}-\d{2}-\d{2}$/.test(e.date || ''), isPrim = isInc && (!src || e.id === src.id);
   let preview = '', note = '';
   if (valid && isInc) {
     const d2 = D.step(e.date, e.sched), d3 = D.step(d2, e.sched);
     preview = 'NEXT ' + U(D.wdm(e.date)) + ' · ' + U(D.wdm(d2)) + ' · ' + U(D.wdm(d3));
     note = isPrim ? 'This source starts each budget period. Changes apply from this paycheck on.' : 'Added to whichever budget period its pay date falls in.';
   }
-  if (valid && !isInc) {
+  if (valid && !isInc && !src) {
+    preview = 'DUE ' + U(D.wdm(e.date));
+    note = 'Once your pay is set up, each bill comes off the top of the paycheck it falls in, before categories and goals.';
+  }
+  if (valid && !isInc && src) {
     const ns = src.next;
     let d = e.date, k = 0;
     while (d < ns && k < 60) { d = D.step(d, e.sched); k++; }

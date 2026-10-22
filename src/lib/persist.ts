@@ -12,9 +12,12 @@ export const pickData = (s: State): Data => {
   return out as Data;
 };
 
-export function loadLocal(): Saved | null {
+/** The device copy. With an account, each account gets its own copy. */
+const localKey = (scope?: string) => (scope ? LOCAL_KEY + ':' + scope.toLowerCase() : LOCAL_KEY);
+
+export function loadLocal(scope?: string): Saved | null {
   try {
-    const raw = localStorage.getItem(LOCAL_KEY);
+    const raw = localStorage.getItem(localKey(scope));
     if (!raw) return null;
     const v = JSON.parse(raw) as Saved;
     return v && v.data && v.data.period ? v : null;
@@ -23,8 +26,8 @@ export function loadLocal(): Saved | null {
   }
 }
 
-export function saveLocal(v: Saved) {
-  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(v)); } catch { /* storage full or blocked: keep running in memory */ }
+export function saveLocal(v: Saved, scope?: string) {
+  try { localStorage.setItem(localKey(scope), JSON.stringify(v)); } catch { /* storage full or blocked: keep running in memory */ }
 }
 
 let client: SupabaseClient | null | undefined;

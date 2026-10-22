@@ -1,7 +1,12 @@
 import * as D from './dates';
 import { r2, sum, usd } from './format';
-import { SEED_TODAY, freshUI, seedData } from './seed';
+import { SEED_TODAY, emptyData, freshUI, seedData } from './seed';
 import type { CatId, Goal, Phase, State, Tier } from './types';
+
+const MONTH = (iso: string) => iso.slice(0, 7);
+/** "13 – 26 OCT" or "28 OCT – 10 NOV" */
+export const periodLabel = (start: string, end: string) =>
+  (MONTH(start) === MONTH(end) ? D.dayOfMonth(start) + ' – ' + D.dm(end) : D.dm(start) + ' – ' + D.dm(end)).toUpperCase();
 
 export const CATN: Record<CatId, string> = { groc: 'Groceries', gas: 'Gas', eat: 'Eating out', house: 'Household', fun: 'Fun' };
 export const TIER: Record<Tier, [string, string]> = { P: ['Personal', 'var(--tP)'], F: ['Financial', 'var(--tF)'], W: ['Work', 'var(--tW)'] };
@@ -19,8 +24,10 @@ export function money(s: State) {
   const spentT = r2(sum(cats, (c) => c.spent)), goalsT = r2(sum(p.goals, (g) => g.a));
   const unassigned = r2(p.pay + p.extra - billsT - allocT - goalsT);
   const left = r2(allocT + rollT - spentT + unassigned);
-  const over = cats.filter((c) => c.left < -0.004);
-  const health: 'Over' | 'Tight' | 'Healthy' = left < 0 ? 'Over' : over.length ? 'Tight' : 'Healthy';
+  // Before the first paycheck is set up there is no budget to be over.
+  const unbudgeted = p.pay + p.extra === 0 && allocT === 0;
+  const over = unbudgeted ? [] : cats.filter((c) => c.left < -0.004);
+  const health: 'Over' | 'Tight' | 'Healthy' = unbudgeted ? 'Healthy' : left < 0 ? 'Over' : over.length ? 'Tight' : 'Healthy';
   return { p, exp, cats, billsT, allocT, rollT, spentT, goalsT, unassigned, left, over, health };
 }
 export type Money = ReturnType<typeof money>;
@@ -35,9 +42,10 @@ export function gi(s: State, g: Goal) {
   return { have: g.saved, rem: r2(Math.max(0, g.target - g.saved)), pct: Math.min(100, (g.saved / g.target) * 100) };
 }
 
-/** The next budget period, built from the income and bill settings. */
+/** The next budget period, built from the income and bill settings. Null until an income source is set up. */
 export function nextP(s: State) {
   const src = s.incomes[0];
+  if (!src) return null;
   const start = src.next, nxt = D.step(start, src.sched), end = D.add(nxt, -1);
   const occ = (from: string, k: D.Sched, a: string, b: string) => {
     const out: string[] = [];
@@ -56,17 +64,19 @@ export function nextP(s: State) {
 }
 
 export function rvUn(s: State) {
-  const n = nextP(s);
+  const n = nextP(s)!;
   return r2(n.pay - sum(n.bills, (b) => b.a) - sum(Object.values(s.rv!.cats) as number[]) - sum(Object.values(s.rv!.goals)));
 }
 
+/** The wean-off phase for a day. Null until a plan exists. */
 export function phaseInfo(s: State, iso = s.today) {
+  if (!s.phases.length) return null;
   const i = s.phases.findIndex((ph) => iso >= ph.start && iso <= ph.end);
   const idx = i >= 0 ? i : iso < s.phases[0].start ? 0 : s.phases.length - 1;
   const ph: Phase = s.phases[idx];
   return { idx, n: s.phases.length, ph, limit: ph.limit, mg: ph.mg };
 }
-export const limitOn = (s: State, iso: string) => phaseInfo(s, iso).limit;
+export const limitOn = (s: State, iso: string) => phaseInfo(s, iso)?.limit ?? null;
 export const pouchesToday = (s: State) => s.pouchLog[s.today] || 0;
 
 const relOf = (s: State, due: string | null) => (due ? D.diff(due, s.today) : null);
@@ -174,7 +184,7 @@ export const R = {
   confirmReview(s: State) {
     const un = rvUn(s);
     if (un < 0) return;
-    const m = money(s), n = nextP(s), rv = s.rv!;
+    const m = money(s), n = nextP(s)!, rv = s.rv!;
     s.history.unshift({ label: s.period.label, pay: s.period.pay + s.period.extra, bills: m.billsT, spent: m.spentT, goals: m.goalsT, left: m.left, cats: m.cats.map((c) => [c.name, c.avail, c.spent]) });
     const lefts: Partial<Record<CatId, number>> = {};
     m.cats.forEach((c) => { lefts[c.id] = c.left; });
@@ -265,15 +275,16 @@ export const R = {
       if (e.date < s.today) return;
       const v = { name, amt, sched: e.sched, next: e.date };
       if (e.id) Object.assign(s.incomes.find((x) => x.id === e.id)!, v); else s.incomes.push({ id: 'i' + s.seq++, ...v });
+      if (s.incomes.length === 1 && s.period.id === 'p0') { s.period.end = D.add(s.incomes[0].next, -1); s.period.label = periodLabel(s.period.start, s.period.end); }
     } else {
       const v = { name, amt, freq: e.sched, due: e.date };
       if (e.id) Object.assign(s.billsDef.find((x) => x.id === e.id)!, v); else s.billsDef.push({ id: 'b' + s.seq++, ...v });
     }
-    s.toast = { t: 'Saved · applies from ' + D.wdm(s.incomes[0].next) }; s.ed = null; s.sheet = null;
+    s.toast = { t: s.incomes.length ? 'Saved · applies from ' + D.wdm(s.incomes[0].next) : 'Saved' }; s.ed = null; s.sheet = null;
   },
   delEd(s: State) {
     const e = s.ed!;
-    if (e.kind === 'inc') { if (s.incomes[0].id === e.id) return; s.incomes = s.incomes.filter((x) => x.id !== e.id); }
+    if (e.kind === 'inc') { if (s.incomes.length > 1 && s.incomes[0].id === e.id) return; s.incomes = s.incomes.filter((x) => x.id !== e.id); }
     else s.billsDef = s.billsDef.filter((x) => x.id !== e.id);
     s.toast = { t: 'Removed ' + e.name }; s.ed = null; s.sheet = null;
   },
@@ -290,14 +301,14 @@ export function dueFromChip(today: string, chip: 'none' | 'tom' | 'week' | 'next
 
 /** When payday arrives, Today shows the paycheck card. */
 export function checkPayday(s: State) {
-  if (!s.payPending && s.today >= s.incomes[0].next) s.payPending = true;
+  if (!s.payPending && s.incomes.length && s.today >= s.incomes[0].next) s.payPending = true;
 }
 
 /** Demo screens, matching the design's flow canvas. "Today" is pinned to the sample data's day. */
 export const DEMOS = ['today', 'tasks', 'money', 'goals', 'library', 'add', 'np', 'np-buy', 'np-drag', 'price-unlinked', 'price-linked', 'bought-proj', 'bought', 'paycheck', 'review', 'money-new', 'goal', 'goal-card', 'done1', 'done2', 'expense', 'expense-done', 'income', 'place', 'over', 'wean', 'setup', 'setup-inc', 'setup-bill'] as const;
 
 export function initial(today: string): State {
-  const s: State = { ...seedData(), ...freshUI(today) };
+  const s: State = { ...emptyData(today), ...freshUI(today) };
   checkPayday(s);
   return s;
 }
@@ -305,7 +316,7 @@ export function initial(today: string): State {
 export function buildDemo(start: string): State {
   const s: State = { ...seedData(), ...freshUI(SEED_TODAY) };
   const car = () => s.projects.find((p) => p.id === 'car')!;
-  const payday = () => { const n = nextP(s); s.payPending = true; s.today = n.start; };
+  const payday = () => { const n = nextP(s)!; s.payPending = true; s.today = n.start; };
   const paid = () => { payday(); R.openReview(s); s.rv!.cats.gas = 130; R.confirmReview(s); s.toast = null; };
   switch (start) {
     case 'tasks': case 'money': case 'goals': case 'library': s.tab = start; break;

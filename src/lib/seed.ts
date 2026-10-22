@@ -83,6 +83,19 @@ export const seedData = (): Data => ({
   seq: 100,
 });
 
+/** A brand-new account: nothing but the five budget categories, all at $0. The first period runs
+ *  open-ended from today until the first income source's pay date. */
+export const emptyData = (today: string): Data => ({
+  period: { id: 'p0', label: 'FROM ' + dmU(today), start: today, end: today, pay: 0, extra: 0, bills: [],
+    cats: (['groc', 'gas', 'eat', 'house', 'fun'] as const).map((id) => ({ id, alloc: 0, roll: 0 })), goals: [] },
+  incomes: [], billsDef: [], history: [], expenses: [], goals: [], projects: [], tasks: [],
+  pouchLog: {}, phases: [], weighIns: [], weightTarget: 0,
+  payPending: false, pendingDone: null, boost: {}, lastCat: 'groc', seq: 100,
+});
+
+const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const dmU = (iso: string) => Number(iso.slice(8, 10)) + ' ' + MON[Number(iso.slice(5, 7)) - 1];
+
 export const freshUI = (today: string): UI => ({
   today,
   tab: 'today', view: null, sheet: null, toast: null,
