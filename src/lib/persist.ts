@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { DATA_KEYS } from './seed';
-import type { Data, State } from './types';
+import type { Data, Expense, State } from './types';
 
 const LOCAL_KEY = 'lfstyl:v1';
 
@@ -114,6 +114,29 @@ export function fileApi(sb: SupabaseClient, sess: Session): FileApi {
       const sp = sess.name.indexOf(' ');
       const r = await signIn(sp > 0 ? sess.name.slice(0, sp) : sess.name, sp > 0 ? sess.name.slice(sp + 1) : '', pin);
       return r.ok;
+    },
+  };
+}
+
+// ---------------------------------------------------------------- Expense archive
+
+export interface ArchiveApi {
+  /** Stores old expenses on the server. Saving one twice is harmless. */
+  put: (items: Expense[]) => Promise<boolean>;
+  /** Every archived expense, newest first. */
+  get: () => Promise<Expense[] | null>;
+}
+
+export function archiveApi(sb: SupabaseClient, sess: Session): ArchiveApi {
+  return {
+    put: async (items) => {
+      const { data, error } = await sb.rpc('lfstyl_archive_put', { token: sess.token, items: items.slice(0, 2000) });
+      return !error && !!(data as { ok: boolean }).ok;
+    },
+    get: async () => {
+      const { data, error } = await sb.rpc('lfstyl_archive_get', { token: sess.token });
+      const r = data as { ok: boolean; items?: Expense[] } | null;
+      return !error && r && r.ok ? r.items || [] : null;
     },
   };
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import * as D from '@/lib/dates';
 import { r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, catName, expiryState, freedPer, gi, goalPer, nextP, paychecksLeft, phaseInfo, planCat, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
+import { ARCHIVE_AFTER_DAYS, CATN, R, TIER, catName, expensesCsv, expiryState, freedPer, gi, goalPer, nextP, paychecksLeft, phaseInfo, planCat, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
 import type { Folder, View } from '@/lib/types';
 import { b64ToBlob, kb, prepareFile } from '@/lib/files';
 import { BillList, DocRow, Pips, PouchNum, scrollProps, useDays14 } from './tabs';
@@ -551,6 +551,7 @@ export function SettingsView() {
           {[['Log expense', 'expense'], ['Pouch +1', 'pouch'], ['Add task', 'task'], ['Add income', 'income']].map(([l, k]) => <span key={k}>{l} · {typeof window !== 'undefined' ? window.location.origin : ''}/?do={k}</span>)}
         </div>
       </div>
+      <Export />
       {signOut && (
         <button className="btn-fill" onClick={signOut} style={{ width: 'calc(100% - 28px)', margin: '22px 14px 0', height: 52, borderRadius: 16, font: '600 15px/1 var(--f-text)' }}>Sign out</button>
       )}
@@ -662,6 +663,35 @@ export function DocView({ id }: { id: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Downloads every expense as a spreadsheet, including the ones archived on the server. */
+function Export() {
+  const { s, archive } = useLf();
+  const [msg, setMsg] = useState('');
+  const run = async () => {
+    setMsg('Preparing…');
+    const old = archive ? await archive.get() : [];
+    if (old == null) { setMsg("Can't reach the server for older expenses. Check your connection."); return; }
+    const url = URL.createObjectURL(new Blob([expensesCsv(s, old)], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `lfstyl-expenses-${s.today}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    setMsg('');
+  };
+  return (
+    <>
+      <Sec l="YOUR DATA" />
+      <div className="pane list">
+        <button onClick={run} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 6, width: '100%', minHeight: 62, padding: '10px 18px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+          <span style={{ fontSize: 15, fontWeight: 500 }}>Export expenses</span>
+          <span className="cap" style={{ lineHeight: 1.4 }}>EVERY EXPENSE AS A SPREADSHEET (CSV){archive ? ` · OLDER THAN ${ARCHIVE_AFTER_DAYS} DAYS ARE KEPT ON THE SERVER` : ''}</span>
+        </button>
+      </div>
+      {msg && <div style={{ padding: '10px 22px 0', fontSize: 13, lineHeight: 1.4, color: msg.startsWith('Prep') ? 'var(--ink2)' : 'var(--crit)' }}>{msg}</div>}
+    </>
   );
 }
 

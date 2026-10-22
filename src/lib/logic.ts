@@ -1,7 +1,7 @@
 import * as D from './dates';
 import { r2, sum, usd } from './format';
 import { SEED_TODAY, emptyData, freshUI, seedData } from './seed';
-import type { CatId, DocFile, Folder, Goal, Phase, State, Sub, Tier } from './types';
+import type { CatId, DocFile, Expense, Folder, Goal, Phase, State, Sub, Tier } from './types';
 
 const MONTH = (iso: string) => iso.slice(0, 7);
 /** "13 – 26 OCT" or "28 OCT – 10 NOV" */
@@ -658,6 +658,26 @@ export function catchUp(s: State) {
   if (!s.period.extras) s.period.extras = s.period.extra > 0 ? [{ id: 'n0', amt: s.period.extra, src: 'Extra income', date: s.period.start }] : [];
   chargeSubs(s);
   checkPayday(s);
+}
+
+/** Expenses this many days older than the current period move to the server archive. */
+export const ARCHIVE_AFTER_DAYS = 60;
+
+/** Expenses old enough to archive: from earlier periods and well before this one began. Project purchases
+ *  stay, since goal progress and buy steps read them. */
+export function archivable(s: Pick<State, 'period' | 'expenses'>) {
+  const cutoff = D.add(s.period.start, -ARCHIVE_AFTER_DAYS);
+  return s.expenses.filter((e) => e.per !== s.period.id && e.date < cutoff && !e.goal && e.src !== 'buy');
+}
+
+/** Every expense, archived ones included, as a CSV file, newest first. */
+export function expensesCsv(s: State, archived: Expense[] = []) {
+  const seen = new Set<string>(), rows: Expense[] = [];
+  for (const e of [...s.expenses, ...archived]) if (!seen.has(e.id)) { seen.add(e.id); rows.push(e); }
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const q = (v: string) => (/[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
+  const goalName = (id: string | null | undefined) => (id ? s.goals.find((g) => g.id === id)?.name ?? '' : '');
+  return ['Date,Amount,Category,Note,Project,Goal', ...rows.map((e) => [e.date, e.amt.toFixed(2), e.cat ? catName(s, e.cat) : '', e.note, e.proj || '', goalName(e.goal)].map(q).join(','))].join('\n') + '\n';
 }
 
 export const FOLDERS: Folder[] = ['Insurance', 'Car', 'Medical', 'IDs', 'Logins', 'Other'];
