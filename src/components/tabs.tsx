@@ -2,7 +2,7 @@
 
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, gi, idleDays, limitOn, nextP, nicotineOn, phaseInfo, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
+import { CATN, R, TIER, freedPer, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
 import type { State } from '@/lib/types';
 import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
@@ -88,9 +88,9 @@ export function Today() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span className="lbl">GOAL COMPLETE</span>
               <span className="disp up" style={{ fontSize: 34, lineHeight: 0.86 }}>{pd.name}</span>
-              <span style={{ fontSize: 13, color: 'var(--ink2)' }}>{`${u0(g.have)} saved` + (pd.per ? ` · ${usd(pd.per, 0)} a paycheck freed` : '')}</span>
+              <span style={{ fontSize: 13, color: 'var(--ink2)' }}>{`${u0(g.have)} saved` + (freedPer(s, pd) ? ` · ${usd(freedPer(s, pd), 0)} a paycheck freed` : '')}</span>
             </div>
-            <button className="btn" style={{ height: 52, borderRadius: 16 }} onClick={() => upd((x) => R.openDone(x, x.pendingDone))}>{pd.per ? `Place ${usd(pd.per, 0)} a paycheck` : 'Finish'}</button>
+            <button className="btn" style={{ height: 52, borderRadius: 16 }} onClick={() => upd((x) => R.openDone(x, x.pendingDone))}>{freedPer(s, pd) ? `Place ${usd(freedPer(s, pd), 0)} a paycheck` : 'Finish'}</button>
           </div>
         );
       })()}
@@ -306,7 +306,11 @@ export function Money() {
           </div></>}
           {m.p.bills.length > 0 && <><Sec l="TAKEN OFF THE TOP" r={usd(m.billsT)} />
           <BillList bills={m.p.bills} h={50} /></>}
-          <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'setup' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '10px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
+          <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'plan' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '10px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Budget plan</span><span className="cap">{`CATEGORIES ${usd(sum(m.cats, (c) => planCat(s, c.id)), 0)} · GOALS ${usd(sum(s.goals.filter((g) => g.status !== 'done' && g.kind !== 'proj'), (g) => goalPer(s, g)), 0)} A PAYCHECK`}</span></span>
+            <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
+          </button>
+          <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'setup' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '8px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Income and bills</span><span className="cap">{src ? 'PAY ' + usd(src.amt, 0) + ' ' + D.SL[src.sched] + ' · ' + s.billsDef.length + ' BILLS' : 'SET UP YOUR PAY AND BILLS'}</span></span>
             <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
           </button>
@@ -376,7 +380,7 @@ export function Goals() {
   const doneG = s.goals.filter((g) => g.status === 'done');
   return (
     <div className="screen" {...scrollProps}>
-      <div className="h-tab"><span className="t">Goals</span><span className="mono" style={{ font: '500 11px/1 var(--f-mono)', letterSpacing: '.1em', color: 'var(--ink2)', paddingBottom: 4 }}>{usd(sum(s.goals.filter((g) => g.status !== 'done'), (g) => g.per), 0)} / PAYCHECK</span></div>
+      <div className="h-tab"><span className="t">Goals</span><span className="mono" style={{ font: '500 11px/1 var(--f-mono)', letterSpacing: '.1em', color: 'var(--ink2)', paddingBottom: 4 }}>{usd(sum(s.goals.filter((g) => g.status !== 'done'), (g) => goalPer(s, g)), 0)} / PAYCHECK</span></div>
       <div className="lbl" style={{ padding: '0 22px', margin: '6px 0 10px' }}>LIFESTYLE</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '0 14px' }}>
         {nicotineOn(s) && <div className="pane" onClick={() => upd((x) => { x.view = { k: 'wean' }; })} style={{ padding: '15px 14px 14px 16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -409,7 +413,10 @@ export function Goals() {
           <Switch on={false} label="Track nicotine" onChange={(on) => upd((x) => R.setNicotine(x, on))} />
         </div>
       )}
-      <div className="lbl" style={{ padding: '0 22px', margin: '24px 0 10px' }}>MONEY</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '14px 0 0' }}>
+        <span className="lbl">MONEY</span>
+        <button onClick={() => upd((x) => R.openGoal(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ NEW GOAL</button>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 14px' }}>
         {live.map((g) => {
           const info = gi(s, g), proj = g.kind === 'proj' ? s.projects.find((p) => p.goal === g.id) : null;
@@ -426,11 +433,11 @@ export function Goals() {
                 </div>
               </div>
               <div className="track"><div style={{ width: `${info.pct}%` }} /></div>
-              <span style={{ fontSize: 12, color: 'var(--ink2)' }}>{g.kind === 'proj' ? `${usd(info.have)} spent of ${usd(g.target, 0)} · funded up front` : `${usd(g.saved, 0)} of ${usd(g.target, 0)} · ${g.per ? usd(g.per, 0) + ' a paycheck' : 'no paycheck contribution'}`}</span>
+              <span style={{ fontSize: 12, color: 'var(--ink2)' }}>{g.kind === 'proj' ? `${usd(info.have)} spent of ${usd(g.target, 0)} · funded up front` : `${usd(g.saved, 0)} of ${usd(g.target, 0)} · ${goalPer(s, g) ? usd(goalPer(s, g), 0) + ' a paycheck' : 'no paycheck contribution'}${g.pace && s.incomes.length ? ` · ${paychecksLeft(s, g.pace.dueBy)} left` : ''}`}</span>
             </div>
           );
         })}
-        {!live.length && <div className="pane" style={{ padding: '20px 18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No money goals yet. Tap + and start a project to create a budget goal for it.</div>}
+        {!live.length && <div className="pane" style={{ padding: '20px 18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No money goals yet. Tap + NEW GOAL for something to save toward, like a trip, and set how many paychecks you have to get there.</div>}
       </div>
       {doneG.length > 0 && (
         <>

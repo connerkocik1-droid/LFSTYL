@@ -28,6 +28,8 @@ The design is the 1c "Lens + panes" direction: thick glass on the money hero, th
 - **Money:** the current period with categories, goal contributions, bills taken off the top and expenses. Swipe the hero or use ‹ › for past periods.
 - **Paycheck review:** on payday, Today shows the paycheck. The review prefills categories and goals from last period, and confirming opens the new period.
 - **Goals:** savings goals count contributions, project goals count purchases. When a goal completes, you choose where its per-paycheck amount goes.
+- **Budget plan:** Money → Budget plan sets how much of each paycheck goes to each category, and shows pay minus bills, categories and goals, with what's left unassigned. Paycheck reviews start from the plan, and you can apply it to the current paycheck.
+- **Savings goals:** Goals → + NEW GOAL. Fund a goal by a deadline (how many paychecks until you need it) or with a fixed amount. A deadline goal takes *what's left ÷ paychecks left* (rounded up to whole dollars), recalculated every paycheck, so extra money or a skipped paycheck re-spreads over the rest.
 - **Subscriptions:** Money → Subscriptions. Each one has an amount, how often it repeats (weekly, monthly, yearly), the next charge date and a category. Every charge is logged as an expense on its date, including charges that came due while the app was closed.
 - **Income and bills:** income sources and fixed bills. Changes apply from the next paycheck.
 - **Quick add (+):** expense, income, pouch +1, project and task.

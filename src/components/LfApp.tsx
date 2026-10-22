@@ -7,7 +7,7 @@ import type { State, Tab } from '@/lib/types';
 import { Sheets } from './sheets';
 import { Goals, Library, Money, Tasks, Today } from './tabs';
 import { Ctx, Lens, LensButton, type LfCtx } from './ui';
-import { GoalView, ProjectView, ReviewView, SetupView, SubsView, WeanView } from './views';
+import { GoalView, PlanView, ProjectView, ReviewView, SetupView, SubsView, WeanView } from './views';
 
 export type TimeOfDay = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
@@ -153,6 +153,7 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }
         {v?.k === 'review' && <ReviewView />}
         {v?.k === 'setup' && <SetupView />}
         {v?.k === 'subs' && <SubsView />}
+        {v?.k === 'plan' && <PlanView />}
 
         {v?.k !== 'review' && (
           <nav style={{ position: 'absolute', left: 14, right: 14, bottom: 'var(--bb)', height: 62, display: 'flex', gap: 10, zIndex: 20 }}>

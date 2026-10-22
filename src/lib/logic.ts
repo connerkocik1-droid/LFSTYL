@@ -70,6 +70,40 @@ export function rvUn(s: State) {
 
 export const nicotineOn = (s: State) => s.nicotineOn !== false;
 
+/** The next n pay dates from the primary income, starting with the upcoming one. */
+export function paydays(s: State, n: number) {
+  const src = s.incomes[0], out: string[] = [];
+  if (!src) return out;
+  let d = src.next;
+  for (let k = 0; k < n; k++) { out.push(d); d = D.step(d, src.sched); }
+  return out;
+}
+
+/** Paychecks from the upcoming one through dueBy (at least 1, so an overdue goal asks for the rest now). */
+export function paychecksLeft(s: State, dueBy: string) {
+  const src = s.incomes[0];
+  if (!src) return 0;
+  let d = src.next, n = 0;
+  while (d <= dueBy && n < 520) { n++; d = D.step(d, src.sched); }
+  return Math.max(1, n);
+}
+
+/** What a goal takes from each paycheck. Paced goals split what's left evenly, in whole dollars. */
+export function goalPer(s: State, g: Goal) {
+  if (g.status === 'done') return 0;
+  if (g.kind === 'save' && g.pace && s.incomes.length) {
+    const rem = r2(g.target - g.saved);
+    return rem > 0 ? Math.ceil(rem / paychecksLeft(s, g.pace.dueBy)) : 0;
+  }
+  return g.per;
+}
+
+/** The per-paycheck amount a finished goal frees up. */
+export const freedPer = (s: State, g: Goal) => goalPer(s, g) || g.per;
+
+/** This paycheck's plan for a category: the standing budget, else last period's amount. */
+export const planCat = (s: State, id: CatId) => s.plan?.cats[id] ?? s.period.cats.find((c) => c.id === id)?.alloc ?? 0;
+
 /** The wean-off phase for a day. Null until a plan exists. */
 export function phaseInfo(s: State, iso = s.today) {
   if (!s.phases.length) return null;
@@ -171,10 +205,11 @@ export const R = {
   },
   openReview(s: State) {
     const bc = s.boost.cats || {}, cats: Partial<Record<CatId, number>> = {}, goals: Record<string, number> = {};
-    s.period.cats.forEach((c) => { cats[c.id] = c.alloc + (bc[c.id] || 0); });
+    s.period.cats.forEach((c) => { cats[c.id] = planCat(s, c.id) + (bc[c.id] || 0); });
     s.goals.forEach((g) => {
-      if (g.kind === 'save' && g.status !== 'done' && g.per > 0) goals[g.id] = Math.min(g.per, r2(g.target - g.saved));
-      if (g.kind === 'acct' && g.per > 0) goals[g.id] = g.per;
+      const per = goalPer(s, g);
+      if (g.kind === 'save' && g.status !== 'done' && per > 0) goals[g.id] = Math.min(per, r2(g.target - g.saved));
+      if (g.kind === 'acct' && per > 0) goals[g.id] = per;
     });
     s.rv = { cats, goals }; s.view = { k: 'review' }; s.sheet = null;
   },
@@ -196,7 +231,7 @@ export const R = {
       cats: s.period.cats.map((c) => ({ id: c.id, alloc: rv.cats[c.id] || 0, roll: r2(lefts[c.id] || 0) })),
       goals: Object.keys(rv.goals).filter((id) => rv.goals[id] > 0).map((id) => ({ id, a: rv.goals[id] })),
     };
-    s.period.goals.forEach((pg) => { const g = s.goals.find((x) => x.id === pg.id); if (g) { g.saved = r2(g.saved + pg.a); g.hist.unshift([n.start, pg.a]); } });
+    s.period.goals.forEach((pg) => { const g = s.goals.find((x) => x.id === pg.id); if (g) { g.saved = r2(g.saved + pg.a); g.hist.unshift([n.start, pg.a]); if (g.pace) g.per = pg.a; } });
     s.incomes.forEach((i) => { let k = 0; while (i.next <= n.end && k < 60) { i.next = D.step(i.next, i.sched); k++; } });
     if (s.today < n.start) s.today = n.start;
     Object.assign(s, { boost: {}, payPending: false, view: null, tab: 'today', rv: null, moff: 0 });
@@ -209,15 +244,15 @@ export const R = {
   closeGoal(s: State, gid: string) { s.pendingDone = gid; s.dn = { gid, stage: 1, to: null, manual: true }; s.sheet = 'done'; },
   doneConfirm(s: State) {
     if (!s.dn || !s.dn.to) return;
-    const g = s.goals.find((x) => x.id === s.dn!.gid)!, amt = g.per, to = s.dn.to;
+    const g = s.goals.find((x) => x.id === s.dn!.gid)!, amt = freedPer(s, g), to = s.dn.to;
     let label = 'Unassigned';
     if (to === 'sav') {
       let a = s.goals.find((x) => x.id === 'savings');
       if (!a) { a = { id: 'savings', name: 'Savings account', kind: 'acct', target: 0, saved: 0, per: 0, hist: [] }; s.goals.push(a); }
       a.per += amt; label = a.name;
-    } else if (to.startsWith('g:')) { const t = s.goals.find((x) => x.id === to.slice(2))!; t.per += amt; label = t.name; }
+    } else if (to.startsWith('g:')) { const t = s.goals.find((x) => x.id === to.slice(2))!; t.per = goalPer(s, t) + amt; delete t.pace; label = t.name; }
     else if (to.startsWith('c:')) { const id = to.slice(2) as CatId; s.boost.cats = s.boost.cats || {}; s.boost.cats[id] = (s.boost.cats[id] || 0) + amt; label = CATN[id]; }
-    g.status = 'done'; g.doneOn = s.today; g.doneTo = amt > 0 ? `${usd(amt, 0)} A PAYCHECK → ${label.toUpperCase()}` : 'CLOSED'; g.per = 0;
+    g.status = 'done'; g.doneOn = s.today; g.doneTo = amt > 0 ? `${usd(amt, 0)} A PAYCHECK → ${label.toUpperCase()}` : 'CLOSED'; g.per = 0; delete g.pace;
     s.pendingDone = null; s.dn = null; s.sheet = null;
     s.toast = { t: amt > 0 ? `From next paycheck, ${usd(amt, 0)} goes to ${label}` : `${g.name} closed` };
   },
@@ -314,6 +349,44 @@ export const R = {
     if (p.idx != null) s.phases.splice(p.idx, 1);
     s.ph = null; s.sheet = null;
     s.toast = { t: 'Phase removed' };
+  },
+  openGoal(s: State, id: string | null) {
+    const g = id ? s.goals.find((x) => x.id === id) : null;
+    const canPace = s.incomes.length > 0;
+    s.gd = g
+      ? { id, name: g.name, target: String(g.target), saved: String(g.saved), mode: g.pace && canPace ? 'pace' : 'fixed', n: String(g.pace && canPace ? paychecksLeft(s, g.pace.dueBy) : 6), per: String(g.per || '') }
+      : { id: null, name: '', target: '', saved: '', mode: canPace ? 'pace' : 'fixed', n: '6', per: '' };
+    s.sheet = 'goal';
+  },
+  saveGoal(s: State) {
+    const e = s.gd!, num = (v: string) => r2(parseFloat(String(v).replace(/[$,]/g, '')) || 0);
+    const name = e.name.trim(), target = num(e.target), saved = num(e.saved), n = parseInt(e.n, 10), per = num(e.per);
+    const g0 = e.id ? s.goals.find((x) => x.id === e.id)! : null, isSave = !g0 || g0.kind === 'save';
+    if (!name || !(target > 0)) return;
+    if (isSave && e.mode === 'pace' && (!s.incomes.length || !(n >= 1))) return;
+    if (!g0) {
+      const g: Goal = { id: 'g' + s.seq++, name, kind: 'save', target, saved, per: 0, hist: saved > 0 ? [[s.today, saved, 'Already saved']] : [] };
+      s.goals.push(g);
+      if (e.mode === 'pace') { g.pace = { dueBy: paydays(s, n)[n - 1] }; g.per = goalPer(s, g); } else g.per = per;
+      s.toast = { t: `${name} added · ${usd(goalPer(s, g), 0)} a paycheck` };
+    } else {
+      g0.name = name; g0.target = target;
+      if (isSave) {
+        if (saved !== g0.saved) { g0.hist.unshift([s.today, r2(saved - g0.saved), 'Adjusted']); g0.saved = saved; }
+        if (e.mode === 'pace') g0.pace = { dueBy: paydays(s, n)[n - 1] }; else { delete g0.pace; g0.per = per; }
+      }
+      s.toast = { t: isSave ? `Saved · ${usd(goalPer(s, g0), 0)} a paycheck` : 'Saved' };
+    }
+    s.gd = null; s.sheet = null;
+  },
+  setPlanCat(s: State, id: CatId, v: number) {
+    s.plan = s.plan || { cats: {} };
+    s.plan.cats[id] = Math.max(0, r2(v));
+  },
+  /** Put the plan's category amounts into the current period as well. */
+  applyPlanNow(s: State) {
+    s.period.cats.forEach((c) => { c.alloc = planCat(s, c.id); });
+    s.toast = { t: 'This paycheck now matches your plan' };
   },
   openSub(s: State, id: string | null) {
     const v = id ? (s.subs || []).find((x) => x.id === id) : null;
