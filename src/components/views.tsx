@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import * as D from '@/lib/dates';
 import { r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, freedPer, gi, goalPer, nextP, paychecksLeft, phaseInfo, planCat, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
+import { CATN, R, TIER, catName, freedPer, gi, goalPer, nextP, paychecksLeft, phaseInfo, planCat, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
 import type { View } from '@/lib/types';
 import { BillList, Pips, PouchNum, scrollProps, useDays14 } from './tabs';
 import { Check, Hero, Lens, Sec, Switch, useLf } from './ui';
@@ -56,7 +56,7 @@ export function ProjectView({ id }: { id: string }) {
           let ty = 0;
           if (d) { if (i === d.from) ty = d.dy; else if (d.from < d.to && i > d.from && i <= d.to) ty = -d.h; else if (d.from > d.to && i >= d.to && i < d.from) ty = d.h; }
           const lifted = !!d && i === d.from, b = g.buy, a = g.action;
-          const src = goal ? U(goal.name) : b && b.cat ? U(CATN[b.cat]) : 'ASKS AT CHECK-OFF';
+          const src = goal ? U(goal.name) : b && b.cat ? U(catName(s, b.cat)) : 'ASKS AT CHECK-OFF';
           return (
             <div key={g.id} data-group="1" style={{ position: 'relative', borderRadius: 16, transform: `translateY(${r2(ty)}px) scale(${lifted ? 1.02 : 1})`, transition: d && !lifted ? 'transform .22s cubic-bezier(.2,.8,.3,1)' : 'none', zIndex: lifted ? 5 : 1, background: lifted ? 'var(--S-bg)' : 'transparent', backdropFilter: lifted ? 'var(--S-bf)' : 'none', WebkitBackdropFilter: lifted ? 'var(--S-bf)' : 'none', boxShadow: lifted ? 'var(--drag-sh)' : 'none' }}>
               {i > 0 && <div className="sep sep52" />}
@@ -378,7 +378,7 @@ export function SubsView() {
         {subs.map((v, k) => (
           <button key={v.id} style={rowBtn} onClick={() => upd((x) => R.openSub(x, v.id))}>
             {k > 0 && <span className="sep" />}
-            <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}><span style={{ font: '500 15px/1.2 var(--f-text)' }}>{v.name}</span><span className="cap">{FREQ[v.freq] + ' · NEXT ' + U(D.dm(v.next)) + ' · ' + U(CATN[v.cat])}</span></span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}><span style={{ font: '500 15px/1.2 var(--f-text)' }}>{v.name}</span><span className="cap">{FREQ[v.freq] + ' · NEXT ' + U(D.dm(v.next)) + ' · ' + U(catName(s, v.cat))}</span></span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}><span style={{ font: '600 16px/1 var(--f-text)' }}>{usd(v.amt)}</span><span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span></span>
           </button>
         ))}
@@ -424,15 +424,19 @@ export function PlanView() {
         </div>
         <span style={{ font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: nx && un < 0 ? 'var(--crit)' : 'var(--ink3)' }}>{nx && un < 0 ? `${usd(-un, 0)} MORE THAN THE PAYCHECK · LOWER A CATEGORY OR GOAL` : `CATEGORIES ${usd(catT, 0)} · GOALS ${usd(goalT, 0)} A PAYCHECK`}</span>
       </div>
-      <Sec l="CATEGORIES" r="EACH PAYCHECK" />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '20px 0 4px' }}>
+        <span className="lbl">BUDGET ITEMS · EACH PAYCHECK</span>
+        <button onClick={() => upd((x) => R.openCat(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ ADD ITEM</button>
+      </div>
       <div className="pane list">
         {m.cats.map((c, i) => (
           <div key={c.id} style={row}>
             {i > 0 && <div className="sep" />}
-            <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}><span style={{ fontSize: 15, fontWeight: 500 }}>{c.name}</span><span className="cap">{`THIS PAYCHECK ${usd(c.alloc, 0)}`}</span></span>
+            <button onClick={() => upd((x) => R.openCat(x, c.id))} aria-label={`Edit ${c.name}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1, padding: 0, border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}><span style={{ fontSize: 15, fontWeight: 500 }}>{c.name} <span style={{ font: '500 13px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span></span><span className="cap">{`THIS PAYCHECK ${usd(c.alloc, 0)}`}</span></button>
             <AmountField label={`${c.name} each paycheck`} value={planCat(s, c.id)} onCommit={(v) => upd((x) => R.setPlanCat(x, c.id, v))} />
           </div>
         ))}
+        {!m.cats.length && <div style={{ padding: '18px', fontSize: 14, color: 'var(--ink2)' }}>No budget items. Tap + ADD ITEM.</div>}
       </div>
       {m.p.pay + m.p.extra > 0 && differs && (
         <button className="btn-fill" onClick={() => upd((x) => R.applyPlanNow(x))} style={{ width: 'calc(100% - 28px)', margin: '10px 14px 0', height: 50, borderRadius: 16, font: '600 14px/1 var(--f-text)' }}>Use these amounts for this paycheck too</button>

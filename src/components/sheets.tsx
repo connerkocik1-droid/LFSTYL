@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import * as D from '@/lib/dates';
 import { r2, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, freedPer, gi, goalPer, nicotineOn, paydays, paychecksLeft, phaseInfo, pouchesToday, subStep } from '@/lib/logic';
+import { CATN, R, TIER, catName, freedPer, gi, goalPer, nicotineOn, paydays, paychecksLeft, phaseInfo, pouchesToday, subStep } from '@/lib/logic';
 import type { CatId, State, Tier } from '@/lib/types';
 import { Keypad, useLf } from './ui';
 
@@ -108,7 +108,7 @@ function ExpenseSheet() {
       <CatPicks sel={s.draft.cat} onPick={(x, id) => { x.draft.cat = id; }} />
       <NoteField ph="Note (optional)" />
       <Keypad />
-      <button className={'btn' + (ok ? '' : ' dim')} onClick={() => upd((x) => R.logExpense(x))}>{ok ? `Log ${usd(amt)} · ${CATN[s.draft.cat!]}` : amt > 0 ? 'Pick a category' : 'Type an amount'}</button>
+      <button className={'btn' + (ok ? '' : ' dim')} onClick={() => upd((x) => R.logExpense(x))}>{ok ? `Log ${usd(amt)} · ${catName(s, s.draft.cat!)}` : amt > 0 ? 'Pick a category' : 'Type an amount'}</button>
     </Sheet>
   );
 }
@@ -127,22 +127,52 @@ function IncomeSheet() {
   );
 }
 
+/** Split unassigned money across categories and goals. Tap a row to give it whatever is left; type to set an exact amount. */
 function PlaceSheet({ close }: { close: () => void }) {
-  const { s, m, upd } = useLf();
+  const { s, m, upd, patch } = useLf();
   const pl = s.pl!;
   const opts = [...m.cats.map((c) => ({ id: 'c:' + c.id, name: c.name, meta: usd(c.left) + ' LEFT' })), ...s.goals.filter((g) => g.kind === 'save' && g.status !== 'done').map((g) => ({ id: 'g:' + g.id, name: g.name, meta: usd(gi(s, g).rem, 0) + ' TO GO' }))];
-  const sel = opts.find((x) => x.id === pl.to);
+  const val = (id: string) => parseFloat(pl.split[id] || '') || 0;
+  const placed = r2(opts.reduce((t, o) => t + val(o.id), 0)), rest = r2(pl.amt - placed), over = rest < -0.004;
+  const parts = opts.filter((o) => val(o.id) > 0);
+  const setAmt = (id: string, v: string) => patch((x) => ({ pl: { ...x.pl!, split: { ...x.pl!.split, [id]: v.replace(/[^\d.]/g, '') } } }));
+  const fill = (id: string) => { const others = r2(placed - val(id)), left = r2(pl.amt - others); if (left > 0) setAmt(id, String(left)); };
+  const cta = over ? `${usd(-rest)} more than you have` : !parts.length ? 'Pick where it goes' : parts.length === 1 ? `Put ${usd(placed)} into ${parts[0].name}` : `Place ${usd(placed)} in ${parts.length} places`;
   return (
     <Sheet>
       <span className="lbl">IN UNASSIGNED · {pl.src}</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 }}>
         <span className="disp scan" style={{ fontSize: 64, lineHeight: 0.8 }}>{usd(pl.amt)}</span>
-        <span style={{ fontSize: 13.5, lineHeight: 1.4, color: 'var(--ink2)', textWrap: 'pretty' }}>Put it somewhere now, or leave it in Unassigned for later.</span>
+        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, paddingBottom: 2 }}>
+          <span className="cap8">LEFT TO PLACE</span>
+          <span style={{ font: '600 16px/1 var(--f-text)', color: over ? 'var(--crit)' : undefined }}>{usd(rest)}</span>
+        </span>
       </div>
-      <Opts opts={opts} sel={pl.to} onPick={(id) => upd((x) => { x.pl!.to = id; })} />
+      <span style={{ fontSize: 13.5, lineHeight: 1.4, color: 'var(--ink2)', textWrap: 'pretty' }}>Split it across as many places as you like. Tap a row to give it what's left, or type an amount. Anything you don't place stays in Unassigned.</span>
+      <div className="pane" style={{ padding: '2px 0', borderRadius: 18 }}>
+        {opts.map((o, i) => {
+          const on = val(o.id) > 0;
+          return (
+            <div key={o.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 58, padding: '6px 8px 6px 16px' }}>
+              {i > 0 && <div className="sep" style={{ left: 16 }} />}
+              <button onClick={() => (on ? setAmt(o.id, '') : fill(o.id))} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, padding: 0, border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+                <span style={{ width: 20, height: 20, flex: 'none', borderRadius: 6, display: 'grid', placeItems: 'center', background: on ? 'var(--ink)' : 'none', boxShadow: on ? 'none' : 'inset 0 0 0 1.5px var(--ink3)' }}>{on && <span className="tick" />}</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 14.5px/1.1 var(--f-text)' }}>{o.id.startsWith('g:') && <span className="dia" />}{o.name}</span>
+                  <span className="cap" style={{ letterSpacing: '.04em' }}>{o.meta}</span>
+                </span>
+              </button>
+              <div style={{ position: 'relative', width: 104, flex: 'none' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', font: '600 15px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+                <input className="field" aria-label={`Amount for ${o.name}`} value={pl.split[o.id] || ''} onChange={(e) => setAmt(o.id, e.target.value)} placeholder="0" inputMode="decimal" style={{ height: 42, padding: '0 12px 0 24px', textAlign: 'right', font: '600 15px/1 var(--f-text)' }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 10 }}>
         <button className="btn-fill" onClick={close} style={{ height: 54, borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Later</button>
-        <button className={'btn' + (sel ? '' : ' dim')} onClick={() => upd((x) => R.place(x))}>{sel ? `Put ${usd(pl.amt)} into ${sel.name}` : 'Pick where it goes'}</button>
+        <button className={'btn' + (parts.length && !over ? '' : ' dim')} onClick={() => upd((x) => R.place(x))}>{cta}</button>
       </div>
     </Sheet>
   );
@@ -546,11 +576,40 @@ function GoalSheet() {
   );
 }
 
+// ---------------------------------------------------------------- Budget item (category)
+
+function CatSheet() {
+  const { s, upd, patch } = useLf();
+  const e = s.cd!, ok = !!e.name.trim();
+  const spent = !!e.id && s.expenses.some((x) => x.per === s.period.id && x.cat === e.id);
+  const set = (k: 'name' | 'amt') => (ev: React.ChangeEvent<HTMLInputElement>) => { const v = ev.target.value; patch((x) => ({ cd: { ...x.cd!, [k]: v } })); };
+  return (
+    <Sheet>
+      <span className="lbl">{e.id ? 'EDIT BUDGET ITEM' : 'NEW BUDGET ITEM'}</span>
+      <input className="field" value={e.name} onChange={set('name')} placeholder="Name, e.g. Dog food" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 18px/1 var(--f-text)' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span className="lbl" style={{ flex: 1 }}>EACH PAYCHECK</span>
+        <div style={{ position: 'relative', width: 140 }}>
+          <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', font: '600 16px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+          <input className="field" value={e.amt} onChange={set('amt')} placeholder="0" inputMode="decimal" style={{ height: 48, padding: '0 14px 0 28px', font: '600 16px/1 var(--f-text)', textAlign: 'right' }} />
+        </div>
+      </div>
+      <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>
+        {spent ? 'This item has spending this paycheck, so it can be deleted after your next payday. ' : ''}The same amount is set aside every paycheck, starting with your next review. Unspent money rolls over to the next paycheck. To use it this paycheck too, tap “Use these amounts for this paycheck too” on the Budget plan.
+      </div>
+      <div style={{ display: 'flex', gap: 10 }}>
+        {!!e.id && <button className={'btn-fill' + (spent ? ' dim' : '')} disabled={spent} onClick={() => upd((x) => R.delCat(x))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)', opacity: spent ? 0.35 : 1 }}>Delete</button>}
+        <button className={'btn' + (ok ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.saveCat(x))}>{e.id ? 'Save' : 'Add item'}</button>
+      </div>
+    </Sheet>
+  );
+}
+
 export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -566,6 +625,7 @@ export function Sheets() {
       {sh === 'phase' && s.ph && <PhaseSheet />}
       {sh === 'sub' && s.sb && <SubSheet />}
       {sh === 'goal' && s.gd && <GoalSheet />}
+      {sh === 'cat' && s.cd && <CatSheet />}
     </>
   );
 }

@@ -2,7 +2,7 @@
 
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, freedPer, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
+import { CATN, R, TIER, catName, freedPer, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
 import type { State } from '@/lib/types';
 import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
@@ -328,7 +328,7 @@ export function Money() {
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span className="cap">{U(D.dm(e.date)) + (e.proj ? ' · ' + U(e.proj) : '') + (e.src === 'sub' ? ' · SUBSCRIPTION' : '')}</span>
                     {e.goal && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 20, padding: '0 8px', borderRadius: 10, boxShadow: 'inset 0 0 0 1px var(--ink3)', font: '600 9.5px/1 var(--f-mono)', letterSpacing: '.06em' }}><span className="dia" style={{ width: 5, height: 5 }} />{U(gName(e.goal))}</span>}
-                    {e.cat && <span style={{ fontSize: 12, color: 'var(--ink2)' }}>{CATN[e.cat]}</span>}
+                    {e.cat && <span style={{ fontSize: 12, color: 'var(--ink2)' }}>{catName(s, e.cat)}</span>}
                   </span>
                 </div>
                 <span style={{ font: '600 16px/1 var(--f-text)', flex: 'none' }}>{usd(e.amt)}</span>

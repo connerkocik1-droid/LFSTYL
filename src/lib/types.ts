@@ -1,7 +1,8 @@
 import type { Sched } from './dates';
 
 export type Tier = 'P' | 'F' | 'W';
-export type CatId = 'groc' | 'gas' | 'eat' | 'house' | 'fun';
+/** The five starter categories use groc, gas, eat, house and fun; ones you add get generated ids. */
+export type CatId = string;
 
 export interface PeriodCat { id: CatId; alloc: number; roll: number }
 export interface PeriodBill { n: string; a: number; d: string }
@@ -82,6 +83,8 @@ export interface Data {
   subs?: Sub[];
   /** Standing budget: how much of each paycheck goes to each category. Paycheck reviews start from it. */
   plan?: { cats: Partial<Record<CatId, number>> };
+  /** Names for categories you added or renamed. */
+  catNames?: Record<CatId, string>;
   history: PastPeriod[];
   expenses: Expense[];
   goals: Goal[];
@@ -109,7 +112,7 @@ export type View =
   | { k: 'setup'; from?: View | null }
   | { k: 'subs'; from?: View | null }
   | { k: 'plan'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal';
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -117,13 +120,15 @@ export interface NpDraft { name: string; tier: Tier; mode: 'skip' | 'goal' | 'ne
 export interface StDraft { mode: 'project' | 'task'; kind: 'action' | 'buy'; title: string; est: string; forA: string | null; cat: CatId; due: 'none' | 'tom' | 'week' | 'next'; tier: Tier }
 export interface PriceDraft { pid: string; gid: string; amt: string; fresh: boolean; cat: CatId }
 export interface DoneDraft { gid: string; stage: 1 | 2; to: string | null; manual?: boolean }
-export interface PlaceDraft { amt: number; to: string | null; src: string }
+/** split maps a destination (c:<category> or g:<goal>) to the typed amount. */
+export interface PlaceDraft { amt: number; split: Record<string, string>; src: string }
 export interface ReviewDraft { cats: Partial<Record<CatId, number>>; goals: Record<string, number> }
 export interface EdDraft { kind: 'inc' | 'bill'; id: string | null; name: string; amt: string; sched: Sched; date: string }
 /** idx is the phase being edited, or null for a new one. */
 export interface PhaseDraft { idx: number | null; start: string; end: string; limit: string; mg: string }
 export interface SubDraft { id: string | null; name: string; amt: string; freq: Sub['freq']; next: string; cat: CatId }
 export interface GoalDraft { id: string | null; name: string; target: string; saved: string; mode: 'pace' | 'fixed'; n: string; per: string }
+export interface CatDraft { id: string | null; name: string; amt: string }
 export interface Drag { pid: string; from: number; to: number; dy: number; h: number }
 
 /** Screen state that is not saved. */
@@ -144,6 +149,7 @@ export interface UI {
   ph: PhaseDraft | null;
   sb: SubDraft | null;
   gd: GoalDraft | null;
+  cd: CatDraft | null;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;
