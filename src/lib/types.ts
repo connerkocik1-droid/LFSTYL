@@ -57,6 +57,8 @@ export interface Goal {
   per: number;
   hist: GoalEntry[];
   event?: string;
+  /** Paced goals spread what's left over the paychecks until dueBy (a pay date), recalculated every paycheck. */
+  pace?: { dueBy: string };
   status?: 'done';
   doneOn?: string;
   doneTo?: string;
@@ -78,6 +80,8 @@ export interface Data {
   billsDef: BillDef[];
   /** Missing in saves from before subscriptions existed. */
   subs?: Sub[];
+  /** Standing budget: how much of each paycheck goes to each category. Paycheck reviews start from it. */
+  plan?: { cats: Partial<Record<CatId, number>> };
   history: PastPeriod[];
   expenses: Expense[];
   goals: Goal[];
@@ -103,8 +107,9 @@ export type View =
   | { k: 'wean'; from?: View | null }
   | { k: 'review'; from?: View | null }
   | { k: 'setup'; from?: View | null }
-  | { k: 'subs'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub';
+  | { k: 'subs'; from?: View | null }
+  | { k: 'plan'; from?: View | null };
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -118,6 +123,7 @@ export interface EdDraft { kind: 'inc' | 'bill'; id: string | null; name: string
 /** idx is the phase being edited, or null for a new one. */
 export interface PhaseDraft { idx: number | null; start: string; end: string; limit: string; mg: string }
 export interface SubDraft { id: string | null; name: string; amt: string; freq: Sub['freq']; next: string; cat: CatId }
+export interface GoalDraft { id: string | null; name: string; target: string; saved: string; mode: 'pace' | 'fixed'; n: string; per: string }
 export interface Drag { pid: string; from: number; to: number; dy: number; h: number }
 
 /** Screen state that is not saved. */
@@ -137,6 +143,7 @@ export interface UI {
   ed: EdDraft | null;
   ph: PhaseDraft | null;
   sb: SubDraft | null;
+  gd: GoalDraft | null;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;

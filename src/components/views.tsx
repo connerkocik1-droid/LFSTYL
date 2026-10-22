@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import * as D from '@/lib/dates';
 import { r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, gi, nextP, phaseInfo, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
+import { CATN, R, TIER, freedPer, gi, goalPer, nextP, paychecksLeft, phaseInfo, planCat, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
 import type { View } from '@/lib/types';
 import { BillList, Pips, PouchNum, scrollProps, useDays14 } from './tabs';
 import { Check, Hero, Lens, Sec, Switch, useLf } from './ui';
@@ -117,7 +118,7 @@ export function GoalView({ id }: { id: string }) {
           <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink2)' }}>of {usd(g.target)} · {Math.round(info.pct)}%</div>
           <div style={{ marginTop: 14, height: 6, borderRadius: 3, background: 'var(--fill2)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${info.pct}%`, borderRadius: 3, background: 'var(--ink)' }} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 16 }}>
-            {[['PER PAYCHECK', g.per ? usd(g.per, 0) : '—'], [g.kind === 'proj' ? 'SPENT' : 'SAVED', u0(info.have)], ['STATUS', g.status === 'done' ? 'DONE' : info.rem <= 0 ? 'REACHED' : 'ACTIVE']].map(([l, v]) => (
+            {[['PER PAYCHECK', goalPer(s, g) ? usd(goalPer(s, g), 0) : '—'], [g.kind === 'proj' ? 'SPENT' : 'SAVED', u0(info.have)], ['STATUS', g.status === 'done' ? 'DONE' : info.rem <= 0 ? 'REACHED' : 'ACTIVE']].map(([l, v]) => (
               <div key={l} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ font: '500 9px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' }}>{l}</span><span style={{ font: '600 16px/1 var(--f-text)' }}>{v}</span></div>
             ))}
           </div>
@@ -142,8 +143,11 @@ export function GoalView({ id }: { id: string }) {
       </div>
       {g.status !== 'done' ? (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, margin: '22px 14px 0' }}>
-          <button className="btn-fill" onClick={() => upd((x) => R.closeGoal(x, g.id))} style={{ width: '100%', height: 52, borderRadius: 16, font: '600 15px/1 var(--f-text)' }}>Close goal</button>
-          <span className="cap8">{g.per ? `FREES ${usd(g.per, 0)} A PAYCHECK` : 'NO PAYCHECK CONTRIBUTION TO FREE'}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, width: '100%' }}>
+            <button className="btn-fill" onClick={() => upd((x) => R.openGoal(x, g.id))} style={{ height: 52, borderRadius: 16, font: '600 15px/1 var(--f-text)' }}>Edit goal</button>
+            <button className="btn-fill" onClick={() => upd((x) => R.closeGoal(x, g.id))} style={{ height: 52, borderRadius: 16, font: '600 15px/1 var(--f-text)' }}>Close goal</button>
+          </div>
+          <span className="cap8">{g.pace && s.incomes.length ? `${paychecksLeft(s, g.pace.dueBy)} PAYCHECKS LEFT · DUE BY ${U(D.dm(g.pace.dueBy))} · RECALCULATED EACH PAYCHECK` : freedPer(s, g) ? `FREES ${usd(freedPer(s, g), 0)} A PAYCHECK WHEN CLOSED` : 'NO PAYCHECK CONTRIBUTION'}</span>
         </div>
       ) : <div style={{ margin: '22px 22px 0', font: '500 10px/1.5 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink2)' }}>COMPLETED · {g.doneTo}</div>}
     </div>
@@ -232,13 +236,13 @@ export function ReviewView() {
         <div style={{ padding: '8px 22px 18px' }}>
           <div className="lbl" style={{ color: 'var(--ink3)' }}>{n.range}</div>
           <Hero v={{ S: '$', D: ps.D, C: ps.C }} d={96} sc={40} style={{ marginTop: 14 }} />
-          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink2)' }}>{n.srcName + (n.extras.length ? ' + ' + n.extras.map((e) => e.n).join(' + ') : '') + ' · prefilled from last period'}</div>
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink2)' }}>{n.srcName + (n.extras.length ? ' + ' + n.extras.map((e) => e.n).join(' + ') : '') + (s.plan ? ' · prefilled from your budget plan' : ' · prefilled from last period')}</div>
         </div>
         <div className="sec lbl" style={{ margin: '6px 0 10px' }}>
           <span>TAKEN OFF THE TOP · {usd(sum(n.bills, (b) => b.a))}</span>
           <button onClick={() => upd((x) => { x.view = { k: 'setup', from: x.view as View }; })} style={{ height: 44, margin: '-17px -12px -17px 0', padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>EDIT</button>
         </div>
-        <BillList bills={n.bills} h={48} />
+        {n.bills.length > 0 ? <BillList bills={n.bills} h={48} /> : <div className="pane list" style={{ padding: '16px 18px', fontSize: 14, color: 'var(--ink2)' }}>No bills this paycheck.</div>}
         <div style={{ padding: '10px 22px 0', font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>BILL CHANGES APPLY FROM THE NEXT PAYCHECK</div>
         <Sec l="CATEGORIES" r="± $10" style={{ marginTop: 22 }} />
         <div className="pane list">
@@ -379,6 +383,79 @@ export function SubsView() {
           </button>
         ))}
         {!subs.length && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No subscriptions yet. Tap + ADD for things like streaming, apps or memberships.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Budget plan
+
+/** A dollar field that commits when you leave it, so typing "12." isn't cut short. */
+function AmountField({ value, onCommit, label }: { value: number; onCommit: (v: number) => void; label: string }) {
+  const [v, setV] = useState(value ? String(value) : '');
+  useEffect(() => { setV(value ? String(value) : ''); }, [value]);
+  const commit = () => { const n = parseFloat(v.replace(/[$,]/g, '')) || 0; if (n !== value) onCommit(n); };
+  return (
+    <div style={{ position: 'relative', width: 116, flex: 'none' }}>
+      <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', font: '600 15px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+      <input className="field" aria-label={label} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} placeholder="0" inputMode="decimal" style={{ height: 44, padding: '0 12px 0 24px', textAlign: 'right', font: '600 16px/1 var(--f-text)' }} />
+    </div>
+  );
+}
+
+export function PlanView() {
+  const { s, m, upd } = useLf();
+  const nx = nextP(s), bills = nx ? sum(nx.bills, (b) => b.a) : 0;
+  const goals = s.goals.filter((g) => (g.kind === 'save' || g.kind === 'acct') && g.status !== 'done');
+  const catT = sum(m.cats, (c) => planCat(s, c.id));
+  const goalT = sum(goals, (g) => Math.min(goalPer(s, g), g.kind === 'save' ? Math.max(0, r2(g.target - g.saved)) : Infinity));
+  const un = r2((nx ? nx.pay : 0) - bills - catT - goalT);
+  const differs = m.cats.some((c) => planCat(s, c.id) !== c.alloc);
+  const row = { position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, minHeight: 64, padding: '8px 12px 8px 18px' } as const;
+  return (
+    <div className="screen push" {...scrollProps}>
+      <Back />
+      <div className="v-head"><div className="t">Budget plan</div><div style={{ marginTop: 10, font: '500 9.5px/1.5 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)', textWrap: 'pretty' }}>{nx ? `HOW EACH PAYCHECK IS SPLIT. YOUR REVIEW ON ${U(D.wdm(nx.start))} STARTS FROM THIS.` : 'HOW EACH PAYCHECK IS SPLIT. ADD YOUR PAY UNDER INCOME AND BILLS TO SEE WHAT IS LEFT.'}</div></div>
+      <div className="pane mx" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10 }}>
+          {[['PAY', nx ? u0(nx.pay) : '—'], ['BILLS', u0(bills)], ['UNASSIGNED', nx ? u0(un) : '—']].map(([l, v], i) => (
+            <div key={l} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><span style={{ font: '500 9px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' }}>{l}</span><span className="disp" style={{ fontSize: 30, lineHeight: 0.85, color: i === 2 && nx && un < 0 ? 'var(--crit)' : undefined }}>{v}</span></div>
+          ))}
+        </div>
+        <span style={{ font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: nx && un < 0 ? 'var(--crit)' : 'var(--ink3)' }}>{nx && un < 0 ? `${usd(-un, 0)} MORE THAN THE PAYCHECK · LOWER A CATEGORY OR GOAL` : `CATEGORIES ${usd(catT, 0)} · GOALS ${usd(goalT, 0)} A PAYCHECK`}</span>
+      </div>
+      <Sec l="CATEGORIES" r="EACH PAYCHECK" />
+      <div className="pane list">
+        {m.cats.map((c, i) => (
+          <div key={c.id} style={row}>
+            {i > 0 && <div className="sep" />}
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}><span style={{ fontSize: 15, fontWeight: 500 }}>{c.name}</span><span className="cap">{`THIS PAYCHECK ${usd(c.alloc, 0)}`}</span></span>
+            <AmountField label={`${c.name} each paycheck`} value={planCat(s, c.id)} onCommit={(v) => upd((x) => R.setPlanCat(x, c.id, v))} />
+          </div>
+        ))}
+      </div>
+      {m.p.pay + m.p.extra > 0 && differs && (
+        <button className="btn-fill" onClick={() => upd((x) => R.applyPlanNow(x))} style={{ width: 'calc(100% - 28px)', margin: '10px 14px 0', height: 50, borderRadius: 16, font: '600 14px/1 var(--f-text)' }}>Use these amounts for this paycheck too</button>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '20px 0 4px' }}>
+        <span className="lbl">GOALS</span>
+        <button onClick={() => upd((x) => R.openGoal(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ NEW GOAL</button>
+      </div>
+      <div className="pane list">
+        {goals.map((g, i) => {
+          const paced = !!g.pace && s.incomes.length > 0;
+          return (
+            <button key={g.id} onClick={() => g.kind === 'save' && upd((x) => R.openGoal(x, g.id))} style={{ ...row, width: '100%', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: g.kind === 'save' ? 'pointer' : 'default' }}>
+              {i > 0 && <span className="sep" />}
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 15, fontWeight: 500 }}><span className="dia" />{g.name}</span>
+                <span className="cap">{g.kind === 'acct' ? 'FROM A FINISHED GOAL' : paced ? `AUTO · ${paychecksLeft(s, g.pace!.dueBy)} PAYCHECKS LEFT · ${usd(Math.max(0, g.target - g.saved), 0)} TO GO` : `FIXED · ${usd(Math.max(0, g.target - g.saved), 0)} TO GO`}</span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}><span style={{ font: '600 16px/1 var(--f-text)' }}>{usd(goalPer(s, g), 0)}</span>{g.kind === 'save' && <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span>}</span>
+            </button>
+          );
+        })}
+        {!goals.length && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No goals yet. Tap + NEW GOAL, set the target and how many paychecks you have, and the amount per paycheck is worked out for you.</div>}
       </div>
     </div>
   );
