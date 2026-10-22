@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { localToday } from '@/lib/dates';
 import { DEMOS, buildDemo, checkPayday } from '@/lib/logic';
 import { loadLocal, loadRemote, loadSession, pickData, saveLocal, saveRemote, saveSession, signIn, signUp, supabase, type Saved, type Session } from '@/lib/persist';
-import { freshUI, seedData } from '@/lib/seed';
+import { emptyData, freshUI } from '@/lib/seed';
 import type { State } from '@/lib/types';
 import LfApp, { Background, type TimeOfDay } from './LfApp';
 
@@ -38,12 +38,12 @@ function useClock() {
 }
 
 const fromSaved = (v: Saved | null, today: string): State => {
-  const s: State = { ...(v ? v.data : seedData()), ...freshUI(today) };
+  const s: State = { ...(v ? v.data : emptyData(today)), ...freshUI(today) };
   checkPayday(s);
   return s;
 };
 
-type Phase = { k: 'loading' } | { k: 'signin' } | { k: 'ready'; state: State; token: string | null } | { k: 'demo'; state: State; scroll?: number };
+type Phase = { k: 'loading' } | { k: 'signin' } | { k: 'ready'; state: State; token: string | null; scope?: string } | { k: 'demo'; state: State; scroll?: number };
 
 export default function Boot() {
   const prefersDark = useMedia('(prefers-color-scheme: dark)', true);
@@ -69,7 +69,7 @@ export default function Boot() {
 
   /** Opens the app for a signed-in account, using whichever copy of the data is newer. */
   const start = async (sess: Session) => {
-    const sb = supabase()!, local = loadLocal();
+    const sb = supabase()!, local = loadLocal(sess.name);
     let remote: Saved | null = null;
     try {
       const r = await loadRemote(sb, sess.token);
@@ -77,27 +77,27 @@ export default function Boot() {
       remote = r;
     } catch { /* offline: open with what is on the device */ }
     const best = remote && (!local || remote.at >= local.at) ? remote : local;
-    setPhase({ k: 'ready', state: fromSaved(best, localToday()), token: sess.token });
+    setPhase({ k: 'ready', state: fromSaved(best, localToday()), token: sess.token, scope: sess.name });
   };
 
   // Save on every change: locally right away, to Supabase shortly after.
   const lastJson = useRef('');
   const remoteT = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const token = phase.k === 'ready' ? phase.token : null;
+  const token = phase.k === 'ready' ? phase.token : null, scope = phase.k === 'ready' ? phase.scope : undefined;
   const onChange = useCallback((s: State) => {
     const data = pickData(s), json = JSON.stringify(data);
     if (json === lastJson.current) return;
     const first = !lastJson.current;
     lastJson.current = json;
-    if (first && loadLocal()) return; // nothing changed yet; keep the stored timestamp
+    if (first && loadLocal(scope)) return; // nothing changed yet; keep the stored timestamp
     const v: Saved = { data, at: Date.now() };
-    saveLocal(v);
+    saveLocal(v, scope);
     const sb = supabase();
     if (sb && token) {
       if (remoteT.current) clearTimeout(remoteT.current);
       remoteT.current = setTimeout(() => { saveRemote(sb, token, v).catch(() => {}); }, 800);
     }
-  }, [token]);
+  }, [token, scope]);
 
   const dark = forced ? forced === 'dark' : prefersDark;
   if (phase.k === 'loading') return <div className={'lf' + (dark ? '' : ' light')}><Background dark={dark} health="Healthy" time={clock.time} drift={false} /></div>;

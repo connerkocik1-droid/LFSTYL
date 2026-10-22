@@ -57,9 +57,9 @@ function useRecs(): Rec[] {
 
 export function Today() {
   const { s, m, upd, shown } = useLf();
-  const nx = nextP(s), daysTo = Math.max(0, D.diff(s.incomes[0].next, s.today));
+  const nx = nextP(s), daysTo = s.incomes.length ? Math.max(0, D.diff(s.incomes[0].next, s.today)) : null;
   const pd = s.pendingDone ? s.goals.find((g) => g.id === s.pendingDone) : null;
-  const pi = phaseInfo(s), lim = pi.limit, pn = pouchesToday(s), pOver = pn > lim;
+  const pi = phaseInfo(s), lim = pi ? pi.limit : null, pn = pouchesToday(s), pOver = lim != null && pn > lim;
   const ov = m.over.slice().sort((a, b) => a.left - b.left);
   const recs = useRecs();
   const goMoney = () => upd((x) => { x.tab = 'money'; x.view = null; x.moff = 0; });
@@ -68,7 +68,7 @@ export function Today() {
     <div className="screen" {...scrollProps}>
       <div className="h-tab"><span className="t">Today</span><span className="mono" style={{ font: '500 11px/1 var(--f-mono)', letterSpacing: '.1em', color: 'var(--ink2)', paddingBottom: 4 }}>{U(D.wdm(s.today))}</span></div>
 
-      {s.payPending && (
+      {s.payPending && nx && (
         <div className="pane" style={{ margin: '0 14px 12px', padding: '16px 16px 16px 18px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'lfPop .45s cubic-bezier(.2,1.2,.3,1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -97,7 +97,7 @@ export function Today() {
 
       <Lens radius={30} inset={6} innerRadius={24} className="mx" style={{ cursor: 'pointer' }} onClick={goMoney}>
         <div style={{ padding: '17px 20px 16px' }}>
-          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>LEFT THIS PAYCHECK</span><span>{daysTo ? `${daysTo} DAYS TO PAYDAY` : 'PAYDAY'}</span></div>
+          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>LEFT THIS PAYCHECK</span><span>{daysTo == null ? 'NO PAY SET UP' : daysTo ? `${daysTo} DAYS TO PAYDAY` : 'PAYDAY'}</span></div>
           <Hero v={hero} style={{ marginTop: 12 }} />
           <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.3, color: 'var(--ink2)' }}>{`of ${usd(m.p.pay + m.p.extra)}` + (Math.abs(m.rollT) > 0.004 ? ` · ${sg(m.rollT)} rolled over` : '')}</div>
           <MoneyBars b={m.billsT} sp={m.spentT} g={m.goalsT} l={m.left} lgL={'LEFT ' + num(shown)} />
@@ -106,21 +106,21 @@ export function Today() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, margin: '12px 14px 0' }}>
         <div className="pane" onClick={() => upd((x) => { x.view = { k: 'wean' }; })} style={{ minHeight: 150, cursor: 'pointer', padding: '14px 12px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
-          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', paddingRight: 4 }}><span>POUCHES</span><span>{pi.mg}</span></div>
+          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', paddingRight: 4 }}><span>POUCHES</span><span>{pi ? pi.mg : ''}</span></div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-            <div className="disp" style={{ display: 'flex', alignItems: 'baseline', lineHeight: 0.86, overflow: 'hidden' }}><span style={{ fontSize: 60 }}><PouchNum n={pn} over={pOver} /></span><span style={{ fontSize: 30, color: 'var(--ink3)', marginLeft: 2 }}>/{lim}</span></div>
+            <div className="disp" style={{ display: 'flex', alignItems: 'baseline', lineHeight: 0.86, overflow: 'hidden' }}><span style={{ fontSize: 60 }}><PouchNum n={pn} over={pOver} /></span>{lim != null && <span style={{ fontSize: 30, color: 'var(--ink3)', marginLeft: 2 }}>/{lim}</span>}</div>
             <LensButton size={54} inset={5} label="Add one pouch" onClick={(e) => { e.stopPropagation(); upd((x) => R.pouch(x, 1)); }}>
               <span className="disp" style={{ position: 'relative', fontSize: 24, lineHeight: 1 }}>+1</span>
             </LensButton>
           </div>
-          <Pips n={pn} lim={lim} w={14} h={5} gap={3} />
-          <div style={{ font: `${pOver ? 600 : 500} 9.5px/1 var(--f-mono)`, letterSpacing: '.08em', color: pOver ? 'var(--crit)' : 'var(--ink3)' }}>{pOver ? `${pn - lim} OVER TODAY'S LIMIT` : `PHASE ${pi.idx + 1} · ENDS ${U(D.dm(pi.ph.end))}`}</div>
+          {lim != null && <Pips n={pn} lim={lim} w={14} h={5} gap={3} />}
+          <div style={{ font: `${pOver ? 600 : 500} 9.5px/1 var(--f-mono)`, letterSpacing: '.08em', color: pOver ? 'var(--crit)' : 'var(--ink3)' }}>{!pi ? 'TODAY · NO PLAN YET' : pOver ? `${pn - lim!} OVER TODAY'S LIMIT` : `PHASE ${pi.idx + 1} · ENDS ${U(D.dm(pi.ph.end))}`}</div>
         </div>
-        <div className="pane" onClick={goMoney} style={{ minHeight: 150, cursor: 'pointer', padding: '14px 12px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
-          <div className="lbl">{ov.length ? 'OVER BUDGET' : 'ON TRACK'}</div>
+        <div className="pane" onClick={daysTo == null && !ov.length ? () => upd((x) => { x.tab = 'money'; x.view = { k: 'setup' }; }) : goMoney} style={{ minHeight: 150, cursor: 'pointer', padding: '14px 12px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
+          <div className="lbl">{ov.length ? 'OVER BUDGET' : daysTo == null ? 'GET STARTED' : 'ON TRACK'}</div>
           <div>
-            <div className="disp up" style={{ fontSize: 34, lineHeight: 0.86 }}>{ov.length ? ov[0].name : `${daysTo} days`}</div>
-            {ov.length ? <div style={{ marginTop: 7, fontSize: 14, fontWeight: 600, color: 'var(--crit)' }}>{usd(-ov[0].left) + ' over'}</div> : <div style={{ marginTop: 7, fontSize: 13, color: 'var(--ink2)' }}>until the next paycheck</div>}
+            <div className="disp up" style={{ fontSize: 34, lineHeight: 0.86 }}>{ov.length ? ov[0].name : daysTo == null ? 'Set up pay' : `${daysTo} days`}</div>
+            {ov.length ? <div style={{ marginTop: 7, fontSize: 14, fontWeight: 600, color: 'var(--crit)' }}>{usd(-ov[0].left) + ' over'}</div> : <div style={{ marginTop: 7, fontSize: 13, color: 'var(--ink2)' }}>{daysTo == null ? 'Add your income and bills' : 'until the next paycheck'}</div>}
           </div>
           <div style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' }}>{ov.length > 1 ? `+${ov.length - 1} MORE OVER` : `${usd(m.unassigned)} UNASSIGNED`}</div>
         </div>
@@ -265,7 +265,7 @@ export function Money() {
           <div style={{ padding: '17px 20px 16px' }}>
             <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>{cur ? 'LEFT THIS PAYCHECK' : 'ENDED WITH'}</span><span>PAY {usd(cur ? m.p.pay + m.p.extra : h!.pay, 0)}</span></div>
             <Hero v={split(cur ? shown : h!.left)} style={{ marginTop: 12 }} />
-            <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.3, color: 'var(--ink2)' }}>{cur ? (Math.abs(m.rollT) > 0.004 ? `${sg(m.rollT)} rolled over · ` : '') + `next pay ${D.wdm(src.next)}` : 'Category money rolled into the next period'}</div>
+            <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.3, color: 'var(--ink2)' }}>{cur ? (Math.abs(m.rollT) > 0.004 ? `${sg(m.rollT)} rolled over · ` : '') + (src ? `next pay ${D.wdm(src.next)}` : 'Add your pay under Income and bills') : 'Category money rolled into the next period'}</div>
             {cur ? <MoneyBars b={m.billsT} sp={m.spentT} g={m.goalsT} l={m.left} lgL={'LEFT ' + num(shown)} /> : <MoneyBars b={h!.bills} sp={h!.spent} g={h!.goals} l={h!.left} lgL={'LEFT ' + num(h!.left)} />}
           </div>
         </Lens>
@@ -294,7 +294,7 @@ export function Money() {
       </div>
       {cur ? (
         <>
-          <Sec l="GOAL CONTRIBUTIONS" r={usd(m.goalsT)} />
+          {m.p.goals.length > 0 && <><Sec l="GOAL CONTRIBUTIONS" r={usd(m.goalsT)} />
           <div className="pane list">
             {m.p.goals.map((pg, i) => (
               <div key={pg.id} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, padding: '0 16px 0 18px' }}>
@@ -303,11 +303,11 @@ export function Money() {
                 <span style={{ font: '600 15px/1 var(--f-text)' }}>{usd(pg.a)}</span>
               </div>
             ))}
-          </div>
-          <Sec l="TAKEN OFF THE TOP" r={usd(m.billsT)} />
-          <BillList bills={m.p.bills} h={50} />
+          </div></>}
+          {m.p.bills.length > 0 && <><Sec l="TAKEN OFF THE TOP" r={usd(m.billsT)} />
+          <BillList bills={m.p.bills} h={50} /></>}
           <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'setup' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '10px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
-            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Income and bills</span><span className="cap">{'PAY ' + usd(src.amt, 0) + ' ' + D.SL[src.sched] + ' · ' + s.billsDef.length + ' BILLS'}</span></span>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Income and bills</span><span className="cap">{src ? 'PAY ' + usd(src.amt, 0) + ' ' + D.SL[src.sched] + ' · ' + s.billsDef.length + ' BILLS' : 'SET UP YOUR PAY AND BILLS'}</span></span>
             <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
           </button>
           <Sec l="EXPENSES" r={m.exp.length} />
@@ -357,7 +357,7 @@ export function useDays14() {
   const { s } = useLf();
   return Array.from({ length: 14 }, (_, k) => {
     const iso = D.add(s.today, k - 13), t = s.pouchLog[iso] || 0, l = limitOn(s, iso), today = k === 13;
-    return { iso, lbl: D.dayOfMonth(iso), t, l, today, over: t > l };
+    return { iso, lbl: D.dayOfMonth(iso), t, l, today, over: l != null && t > l };
   });
 }
 
@@ -377,17 +377,26 @@ export function Goals() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '0 14px' }}>
         <div className="pane" onClick={() => upd((x) => { x.view = { k: 'wean' }; })} style={{ padding: '15px 14px 14px 16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={{ fontSize: 14.5, fontWeight: 500 }}>Nicotine wean-off</span>
-          <span className="disp" style={{ fontSize: 44, lineHeight: 0.82 }}>{pn}/{pi.limit}</span>
+          <span className="disp" style={{ fontSize: 44, lineHeight: 0.82 }}>{pi ? `${pn}/${pi.limit}` : pn}</span>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 22 }}>
             {days.map((d) => <div key={d.iso} style={{ flex: 1, height: Math.min(22, (d.t / 10) * 22), borderRadius: 1, background: d.over ? 'var(--crit)' : 'var(--ink)', opacity: d.over || d.today ? 1 : 0.5 }} />)}
           </div>
-          <span style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>PHASE {pi.idx + 1} OF {pi.n} · {pi.mg}</span>
+          <span style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{pi ? `PHASE ${pi.idx + 1} OF ${pi.n} · ${pi.mg}` : 'POUCHES TODAY · NO PLAN YET'}</span>
         </div>
         <div className="pane" style={{ padding: '15px 14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={{ fontSize: 14.5, fontWeight: 500 }}>Weight</span>
-          <span style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}><span className="disp" style={{ fontSize: 44, lineHeight: 0.82 }}>{last.toFixed(1)}</span><span className="mono" style={{ font: '500 10px/1 var(--f-mono)', color: 'var(--ink2)' }}>LB</span></span>
-          <svg width="100%" height="22" viewBox="0 0 120 22" preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}><polyline points={wPts} fill="none" stroke="var(--ink)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" /></svg>
-          <span style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>TARGET {s.weightTarget} · {delta <= 0 ? '−' : '+'}{Math.abs(delta).toFixed(1)} IN 30D</span>
+          {wv.length ? (
+            <>
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}><span className="disp" style={{ fontSize: 44, lineHeight: 0.82 }}>{last.toFixed(1)}</span><span className="mono" style={{ font: '500 10px/1 var(--f-mono)', color: 'var(--ink2)' }}>LB</span></span>
+              <svg width="100%" height="22" viewBox="0 0 120 22" preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}><polyline points={wPts} fill="none" stroke="var(--ink)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" /></svg>
+              <span style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{s.weightTarget ? `TARGET ${s.weightTarget} · ` : ''}{delta <= 0 ? '−' : '+'}{Math.abs(delta).toFixed(1)} IN 30D</span>
+            </>
+          ) : (
+            <>
+              <span className="disp" style={{ fontSize: 44, lineHeight: 0.82, color: 'var(--ink3)' }}>—</span>
+              <span style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>NO WEIGH-INS YET</span>
+            </>
+          )}
         </div>
       </div>
       <div className="lbl" style={{ padding: '0 22px', margin: '24px 0 10px' }}>MONEY</div>
@@ -411,6 +420,7 @@ export function Goals() {
             </div>
           );
         })}
+        {!live.length && <div className="pane" style={{ padding: '20px 18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No money goals yet. Tap + and start a project to create a budget goal for it.</div>}
       </div>
       {doneG.length > 0 && (
         <>
@@ -432,20 +442,18 @@ export function Goals() {
 
 // ---------------------------------------------------------------- Library
 
+// The brief's fixed folders. Adding files isn't built yet, so they start empty.
 const FOLDERS: { name: string; lines: { t: string; tone?: 'warn' | 'lock' }[] }[] = [
-  { name: 'Insurance', lines: [{ t: '4 FILES' }, { t: 'AUTO CARD EXPIRES 2 NOV', tone: 'warn' }] },
-  { name: 'Car', lines: [{ t: '6 FILES · TITLE, SERVICE, REG' }] },
-  { name: 'Medical', lines: [{ t: '3 FILES' }] },
-  { name: 'IDs', lines: [{ t: '2 FILES' }, { t: 'LICENSE EXPIRES MAR 2027' }] },
+  { name: 'Insurance', lines: [{ t: 'NO FILES' }] },
+  { name: 'Car', lines: [{ t: 'NO FILES' }] },
+  { name: 'Medical', lines: [{ t: 'NO FILES' }] },
+  { name: 'IDs', lines: [{ t: 'NO FILES' }] },
   { name: 'Logins', lines: [{ t: 'LOCKED · FACE ID', tone: 'lock' }] },
-  { name: 'Other', lines: [{ t: '5 FILES' }] },
+  { name: 'Other', lines: [{ t: 'NO FILES' }] },
 ];
-const RECENT = [['PDF', 'Auto insurance card', 'INSURANCE · ADDED 2 OCT'], ['PHOTO', 'Registration renewal notice', 'CAR · ADDED 28 SEP']];
 
 export function Library() {
   const { s, upd } = useLf();
-  const jp = s.goals.find((g) => g.id === 'japan');
-  const inDays = D.diff('2027-03-14', s.today);
   return (
     <div className="screen" {...scrollProps}>
       <div className="h-tab" style={{ paddingRight: 18 }}>
@@ -469,35 +477,9 @@ export function Library() {
               </div>
             ))}
           </div>
-          <div className="lbl" style={{ padding: '0 22px', margin: '24px 0 10px' }}>RECENT</div>
-          <div className="pane list">
-            {RECENT.map(([kind, title, meta], i) => (
-              <div key={title} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px' }}>
-                {i > 0 && <div className="sep" style={{ left: 70 }} />}
-                <div style={{ width: 40, height: 50, flex: 'none', borderRadius: 6, background: 'repeating-linear-gradient(135deg, var(--fill2) 0 4px, transparent 4px 8px)', boxShadow: 'inset 0 0 0 1px var(--line)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5, font: '600 8px/1 var(--f-mono)', color: 'var(--ink3)' }}>{kind}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ fontSize: 15, fontWeight: 500 }}>{title}</span><span className="cap">{meta}</span></div>
-              </div>
-            ))}
-          </div>
         </>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 14px' }}>
-          <div className="pane" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><span className="disp up" style={{ fontSize: 34, lineHeight: 0.86 }}>Japan</span><span style={{ font: '500 10px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink2)' }}>{U(D.rangeY('2027-03-14', '2027-03-28'))}</span></div>
-              <span style={{ font: '500 10px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' }}>{inDays > 0 ? `IN ${inDays} DAYS` : 'NOW'}</span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-              {[['3/12', 'CHECKLIST'], [jp ? usd(jp.saved, 0) : '', 'BUDGET'], ['2', 'BOOKINGS'], ['3', 'DOCS']].map(([v, l]) => (
-                <div key={l} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ font: '600 16px/1 var(--f-text)' }}>{v}</span><span style={{ font: '500 9px/1 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{l}</span></div>
-              ))}
-            </div>
-          </div>
-          <div className="pane" style={{ padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}><span className="disp up" style={{ fontSize: 26, lineHeight: 0.9 }}>Mom&apos;s 60th</span><span style={{ font: '500 10px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' }}>16 AUG 2026 · DONE</span></div>
-            <span style={{ font: '600 16px/1 var(--f-text)' }}>$412.80</span>
-          </div>
-        </div>
+        <div className="pane mx" style={{ padding: '20px 18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No events yet. A trip or occasion will bundle its checklist, budget, bookings and documents here.</div>
       )}
     </div>
   );

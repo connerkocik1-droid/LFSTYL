@@ -154,17 +154,17 @@ export function GoalView({ id }: { id: string }) {
 
 export function WeanView() {
   const { s, upd } = useLf();
-  const pi = phaseInfo(s), lim = pi.limit, pn = pouchesToday(s), pOver = pn > lim, days = useDays14();
+  const pi = phaseInfo(s), lim = pi ? pi.limit : null, pn = pouchesToday(s), pOver = lim != null && pn > lim, days = useDays14();
   const past = days.slice(0, 13);
   return (
     <div className="screen push" {...scrollProps}>
       <Back />
-      <div className="v-head"><div className="t">Wean-off</div><div className="cap8" style={{ marginTop: 10 }}>NICOTINE · PHASE {pi.idx + 1} OF {pi.n} · ENDS {U(D.dm(pi.ph.end))}</div></div>
+      <div className="v-head"><div className="t">Wean-off</div><div className="cap8" style={{ marginTop: 10 }}>{pi ? `NICOTINE · PHASE ${pi.idx + 1} OF ${pi.n} · ENDS ${U(D.dm(pi.ph.end))}` : 'NICOTINE · NO PLAN YET'}</div></div>
       <Lens radius={30} inset={6} innerRadius={24} className="mx">
         <div style={{ padding: '17px 20px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between' }}><span>TODAY · {pi.mg}</span><span>{pOver ? `${pn - lim} OVER` : `${lim - pn} LEFT TODAY`}</span></div>
-          <div className="disp" style={{ display: 'flex', alignItems: 'baseline', lineHeight: 0.8, overflow: 'hidden' }}><span style={{ fontSize: 132 }}><PouchNum n={pn} over={pOver} /></span><span style={{ fontSize: 56, color: 'var(--ink3)', marginLeft: 4 }}>/{lim}</span></div>
-          <Pips n={pn} lim={lim} w={40} h={6} gap={4} />
+          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between' }}><span>{pi ? `TODAY · ${pi.mg}` : 'TODAY'}</span><span>{lim == null ? '' : pOver ? `${pn - lim} OVER` : `${lim - pn} LEFT TODAY`}</span></div>
+          <div className="disp" style={{ display: 'flex', alignItems: 'baseline', lineHeight: 0.8, overflow: 'hidden' }}><span style={{ fontSize: 132 }}><PouchNum n={pn} over={pOver} /></span>{lim != null && <span style={{ fontSize: 56, color: 'var(--ink3)', marginLeft: 4 }}>/{lim}</span>}</div>
+          {lim != null && <Pips n={pn} lim={lim} w={40} h={6} gap={4} />}
           {pOver && <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--crit)' }}>Over today&apos;s limit. Logged anyway.</div>}
           <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: 10 }}>
             <button className="btn-fill" aria-label="Remove one pouch" onClick={() => upd((x) => R.pouch(x, -1))} style={{ height: 56, borderRadius: 18, font: '700 24px/1 var(--f-disp)' }}>−1</button>
@@ -172,25 +172,25 @@ export function WeanView() {
           </div>
         </div>
       </Lens>
-      <Sec l="LAST 14 DAYS" r={`${past.filter((d) => d.t <= d.l).length} OF 13 DAYS AT OR UNDER`} />
+      <Sec l="LAST 14 DAYS" r={pi ? `${past.filter((d) => d.l != null && d.t <= d.l).length} OF 13 DAYS AT OR UNDER` : ''} />
       <div className="pane mx" style={{ padding: '16px 16px 12px' }}>
         <div style={{ display: 'flex', gap: 5 }}>
           {days.map((d) => (
             <div key={d.iso} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7 }}>
               <div style={{ position: 'relative', width: '100%', height: 84, display: 'flex', alignItems: 'flex-end' }}>
-                <div style={{ position: 'absolute', left: -2, right: -2, bottom: (d.l / 10) * 84, height: 1.5, background: 'var(--ink3)' }} />
+                {d.l != null && <div style={{ position: 'absolute', left: -2, right: -2, bottom: (d.l / 10) * 84, height: 1.5, background: 'var(--ink3)' }} />}
                 <div style={{ width: '100%', height: Math.min(84, (d.t / 10) * 84), borderRadius: 3, background: d.over ? 'var(--crit)' : 'var(--ink)', opacity: d.over || d.today ? 1 : 0.45 }} />
               </div>
               <span style={{ font: '500 9px/1 var(--f-mono)', color: 'var(--ink3)' }}>{d.lbl}</span>
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 10, font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>LINE = THAT DAY&apos;S LIMIT · RED = OVER</div>
+        <div style={{ marginTop: 10, font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{pi ? <>LINE = THAT DAY&apos;S LIMIT · RED = OVER</> : 'POUCHES PER DAY'}</div>
       </div>
       <div className="lbl" style={{ padding: '0 22px', margin: '24px 0 10px' }}>PLAN</div>
       <div className="pane mx" style={{ padding: '4px 0' }}>
         {s.phases.map((ph, i) => {
-          const st = i < pi.idx ? 'past' : i === pi.idx ? 'cur' : 'fut';
+          const st = i < pi!.idx ? 'past' : i === pi!.idx ? 'cur' : 'fut';
           const sameM = ph.start.slice(0, 7) === ph.end.slice(0, 7);
           return (
             <div key={ph.start} style={{ position: 'relative', display: 'grid', gridTemplateColumns: '16px minmax(0,1fr) auto', columnGap: 14, alignItems: 'center', minHeight: 62, padding: '10px 16px 10px 18px' }}>
@@ -201,6 +201,7 @@ export function WeanView() {
             </div>
           );
         })}
+        {!pi && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No plan yet. You can log pouches now; daily limits appear once a plan is set.</div>}
       </div>
     </div>
   );
@@ -211,7 +212,9 @@ export function WeanView() {
 export function ReviewView() {
   const { s, m, upd } = useLf();
   if (!s.rv) return null;
-  const n = nextP(s), un = rvUn(s), ps = split(n.pay), rv = s.rv;
+  const n = nextP(s), rv = s.rv;
+  if (!n) return null;
+  const un = rvUn(s), ps = split(n.pay);
   return (
     <>
       <div className="screen push" {...scrollProps} style={{ paddingBottom: 'calc(var(--bb) + 106px)' }}>
@@ -285,15 +288,15 @@ export function ReviewView() {
 
 export function SetupView() {
   const { s, upd } = useLf();
-  const src = s.incomes[0], nx = nextP(s), nxB = sum(nx.bills, (b) => b.a);
+  const src = s.incomes[0], nx = nextP(s), nxB = nx ? sum(nx.bills, (b) => b.a) : 0;
   const moT = sum(s.billsDef, (b) => b.amt * ({ weekly: 52 / 12, biweekly: 26 / 12, semimonthly: 2, monthly: 1, yearly: 1 / 12 }[b.freq] || 1));
   const addBtn = { height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' } as const;
   const rowBtn = { position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', minHeight: 62, padding: '10px 16px 10px 18px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' } as const;
   return (
     <div className="screen push" {...scrollProps}>
       <Back />
-      <div className="v-head"><div className="t">Income and bills</div><div style={{ marginTop: 10, font: '500 9.5px/1.5 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)', textWrap: 'pretty' }}>CHANGES APPLY FROM THE PAYCHECK ON {U(D.wdm(src.next))}. THE CURRENT PERIOD STAYS AS IT IS.</div></div>
-      <div className="pane mx" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="v-head"><div className="t">Income and bills</div><div style={{ marginTop: 10, font: '500 9.5px/1.5 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)', textWrap: 'pretty' }}>{src ? `CHANGES APPLY FROM THE PAYCHECK ON ${U(D.wdm(src.next))}. THE CURRENT PERIOD STAYS AS IT IS.` : 'ADD YOUR PAY TO START BUDGETING. YOUR FIRST PERIOD RUNS UNTIL ITS FIRST PAY DATE.'}</div></div>
+      {nx && <div className="pane mx" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}><span className="lbl">NEXT PAYCHECK</span><span className="cap">{nx.range}</span></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10 }}>
           {[['PAY', u0(nx.pay)], ['BILLS', u0(nxB)], ['AFTER BILLS', u0(r2(nx.pay - nxB))]].map(([l, v]) => (
@@ -301,7 +304,7 @@ export function SetupView() {
           ))}
         </div>
         <span style={{ font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{nx.bills.length + (nx.bills.length === 1 ? ' BILL COMES' : ' BILLS COME') + ' OFF THE TOP, THEN CATEGORIES AND GOALS'}</span>
-      </div>
+      </div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '20px 0 4px' }}><span className="lbl">INCOME</span><button style={addBtn} onClick={() => upd((x) => R.openEd(x, 'inc', null))}>+ ADD</button></div>
       <div className="pane list">
         {s.incomes.map((i, k) => (
@@ -315,6 +318,7 @@ export function SetupView() {
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}><span style={{ font: '600 16px/1 var(--f-text)' }}>{usd(i.amt)}</span><span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span></span>
           </button>
         ))}
+        {!s.incomes.length && <div style={{ padding: '18px', fontSize: 14, color: 'var(--ink2)' }}>No income yet. Tap + ADD to set up your pay.</div>}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '20px 0 4px' }}>
         <span className="lbl">FIXED BILLS</span>
@@ -328,6 +332,7 @@ export function SetupView() {
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}><span style={{ font: '600 16px/1 var(--f-text)' }}>{usd(b.amt)}</span><span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span></span>
           </button>
         ))}
+        {!s.billsDef.length && <div style={{ padding: '18px', fontSize: 14, color: 'var(--ink2)' }}>No bills yet.</div>}
       </div>
     </div>
   );
