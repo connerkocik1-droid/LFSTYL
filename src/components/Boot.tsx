@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { localToday } from '@/lib/dates';
-import { DEMOS, buildDemo, catchUp } from '@/lib/logic';
-import { fileApi, loadLocal, pushApi, loadRemote, loadSession, pickData, saveLocal, saveRemote, saveSession, signIn, signUp, supabase, type Saved, type Session } from '@/lib/persist';
+import { DEMOS, archivable, buildDemo, catchUp } from '@/lib/logic';
+import { archiveApi, fileApi, loadLocal, pushApi, loadRemote, loadSession, pickData, saveLocal, saveRemote, saveSession, signIn, signUp, supabase, type Saved, type Session } from '@/lib/persist';
 import { emptyData, freshUI } from '@/lib/seed';
 import type { State } from '@/lib/types';
 import LfApp, { Background, type TimeOfDay } from './LfApp';
@@ -98,6 +98,15 @@ export default function Boot() {
     // This device has changes the server never got (closed before they synced): send them now.
     else if (online && local) queueSave(sess.token, local);
     const state = fromSaved(best, localToday());
+    // Old expenses move to the server archive so the saved copy stays small.
+    const old = online ? archivable(state).slice(0, 2000) : [];
+    if (old.length && (await archiveApi(sb, sess).put(old))) {
+      const ids = new Set(old.map((e) => e.id));
+      state.expenses = state.expenses.filter((e) => !ids.has(e.id));
+      const v: Saved = { data: pickData(state), at: Date.now() };
+      saveLocal(v, sess.name);
+      queueSave(sess.token, v);
+    }
     if (opts.note) { state.toast = { t: opts.note, id: Date.now() }; state.tab = lastTab.current; }
     lastJson.current = '';
     setPhase({ k: 'ready', state, token: sess.token, scope: sess.name, rev: Date.now() });
@@ -153,7 +162,7 @@ export default function Boot() {
   if (phase.k === 'demo') return <LfApp initial={phase.state} dark={dark} time={clock.time} drift={!reduced} scrollTo={phase.scroll} />;
   const initial = clock.today > phase.state.today ? { ...phase.state, today: clock.today } : phase.state;
   const sbc = supabase(), sess = sessRef.current;
-  return <LfApp key={phase.rev} initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} account={phase.scope} action={action} files={sbc && sess && phase.token ? fileApi(sbc, sess) : undefined} push={sbc && sess && phase.token ? pushApi(sbc, sess) : undefined}
+  return <LfApp key={phase.rev} initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} account={phase.scope} action={action} files={sbc && sess && phase.token ? fileApi(sbc, sess) : undefined} push={sbc && sess && phase.token ? pushApi(sbc, sess) : undefined} archive={sbc && sess && phase.token ? archiveApi(sbc, sess) : undefined}
     onSignOut={phase.token ? () => { saveSession(null); sessRef.current = null; serverAt.current = null; setAction(null); setPhase({ k: 'signin' }); } : undefined} />;
 }
 
