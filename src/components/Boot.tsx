@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { localToday } from '@/lib/dates';
 import { DEMOS, buildDemo, checkPayday } from '@/lib/logic';
-import { loadLocal, loadRemote, pickData, saveLocal, saveRemote, supabase, type Saved } from '@/lib/persist';
+import { loadLocal, loadRemote, loadSession, pickData, saveLocal, saveRemote, saveSession, signIn, signUp, supabase, type Saved, type Session } from '@/lib/persist';
 import { freshUI, seedData } from '@/lib/seed';
 import type { State } from '@/lib/types';
 import LfApp, { Background, type TimeOfDay } from './LfApp';
@@ -44,7 +43,7 @@ const fromSaved = (v: Saved | null, today: string): State => {
   return s;
 };
 
-type Phase = { k: 'loading' } | { k: 'signin' } | { k: 'ready'; state: State; userId: string | null } | { k: 'demo'; state: State; scroll?: number };
+type Phase = { k: 'loading' } | { k: 'signin' } | { k: 'ready'; state: State; token: string | null } | { k: 'demo'; state: State; scroll?: number };
 
 export default function Boot() {
   const prefersDark = useMedia('(prefers-color-scheme: dark)', true);
@@ -63,22 +62,28 @@ export default function Boot() {
       return;
     }
     const sb = supabase();
-    if (!sb) { setPhase({ k: 'ready', state: fromSaved(loadLocal(), localToday()), userId: null }); return; }
-    const start = async (session: Session | null) => {
-      if (!session) { setPhase({ k: 'signin' }); return; }
-      const local = loadLocal(), remote = await loadRemote(sb, session.user.id);
-      const best = remote && (!local || remote.at >= local.at) ? remote : local;
-      setPhase({ k: 'ready', state: fromSaved(best, localToday()), userId: session.user.id });
-    };
-    sb.auth.getSession().then(({ data }) => start(data.session));
-    const { data: sub } = sb.auth.onAuthStateChange((ev, session) => { if (ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') start(session); });
-    return () => sub.subscription.unsubscribe();
+    if (!sb) { setPhase({ k: 'ready', state: fromSaved(loadLocal(), localToday()), token: null }); return; }
+    const sess = loadSession();
+    if (sess) start(sess); else setPhase({ k: 'signin' });
   }, []);
+
+  /** Opens the app for a signed-in account, using whichever copy of the data is newer. */
+  const start = async (sess: Session) => {
+    const sb = supabase()!, local = loadLocal();
+    let remote: Saved | null = null;
+    try {
+      const r = await loadRemote(sb, sess.token);
+      if (r === 'signed-out') { saveSession(null); setPhase({ k: 'signin' }); return; }
+      remote = r;
+    } catch { /* offline: open with what is on the device */ }
+    const best = remote && (!local || remote.at >= local.at) ? remote : local;
+    setPhase({ k: 'ready', state: fromSaved(best, localToday()), token: sess.token });
+  };
 
   // Save on every change: locally right away, to Supabase shortly after.
   const lastJson = useRef('');
   const remoteT = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const userId = phase.k === 'ready' ? phase.userId : null;
+  const token = phase.k === 'ready' ? phase.token : null;
   const onChange = useCallback((s: State) => {
     const data = pickData(s), json = JSON.stringify(data);
     if (json === lastJson.current) return;
@@ -88,59 +93,79 @@ export default function Boot() {
     const v: Saved = { data, at: Date.now() };
     saveLocal(v);
     const sb = supabase();
-    if (sb && userId) {
+    if (sb && token) {
       if (remoteT.current) clearTimeout(remoteT.current);
-      remoteT.current = setTimeout(() => { saveRemote(sb, userId, v); }, 800);
+      remoteT.current = setTimeout(() => { saveRemote(sb, token, v).catch(() => {}); }, 800);
     }
-  }, [userId]);
+  }, [token]);
 
   const dark = forced ? forced === 'dark' : prefersDark;
   if (phase.k === 'loading') return <div className={'lf' + (dark ? '' : ' light')}><Background dark={dark} health="Healthy" time={clock.time} drift={false} /></div>;
-  if (phase.k === 'signin') return <SignIn dark={dark} time={clock.time} />;
+  if (phase.k === 'signin') return <Account dark={dark} time={clock.time} onDone={(sess) => { saveSession(sess); setPhase({ k: 'loading' }); start(sess); }} />;
   if (phase.k === 'demo') return <LfApp initial={phase.state} dark={dark} time={clock.time} drift={!reduced} scrollTo={phase.scroll} />;
   const initial = clock.today > phase.state.today ? { ...phase.state, today: clock.today } : phase.state;
   return <LfApp initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} />;
 }
 
-/** Email code sign-in, shown only when Supabase sync is configured. A code works inside the installed app, where a link would open the browser. */
-function SignIn({ dark, time }: { dark: boolean; time: TimeOfDay }) {
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [sent, setSent] = useState(false);
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
+
+/** Create an account (first name, last name, 4-digit PIN entered twice) or sign in with name and PIN. */
+function Account({ dark, time, onDone }: { dark: boolean; time: TimeOfDay; onDone: (s: Session) => void }) {
+  const [mode, setMode] = useState<'create' | 'signin'>('create');
+  const [first, setFirst] = useState('');
+  const [last, setLast] = useState('');
+  const [pin, setPin] = useState('');
+  const [firstPin, setFirstPin] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const sb = supabase()!;
-  const send = async () => {
+  const named = !!first.trim() && !!last.trim();
+
+  const submit = async (p: string) => {
+    if (!named) { setErr('Enter your first and last name.'); setPin(''); return; }
+    if (mode === 'create' && firstPin == null) { setFirstPin(p); setPin(''); setErr(''); return; }
+    if (mode === 'create' && firstPin !== p) { setFirstPin(null); setPin(''); setErr("The PINs didn't match. Choose your PIN again."); return; }
     setBusy(true); setErr('');
-    const { error } = await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: window.location.origin } });
+    const r = mode === 'create' ? await signUp(first, last, p) : await signIn(first, last, p);
     setBusy(false);
-    if (error) setErr(error.message); else setSent(true);
+    if (r.ok) { onDone(r.session); return; }
+    setErr(r.error); setPin('');
+    if (mode === 'create') setFirstPin(null);
   };
-  // The emailed link carries the same one-time token as the code, so a pasted link signs in too.
-  // That keeps sign-in inside the installed app even when the email has no code in it.
-  const link = (() => { try { const u = new URL(code.trim()); const t = u.searchParams.get('token') || u.searchParams.get('token_hash'); return t ? { t, type: u.searchParams.get('type') || 'email' } : null; } catch { return null; } })();
-  const verify = async () => {
-    setBusy(true); setErr('');
-    const { error } = link
-      ? await sb.auth.verifyOtp({ token_hash: link.t, type: (['signup', 'magiclink', 'invite', 'recovery', 'email_change'].includes(link.type) ? link.type : 'email') as 'email' })
-      : await sb.auth.verifyOtp({ email: email.trim(), token: code.replace(/\D/g, ''), type: 'email' });
-    setBusy(false);
-    if (error) setErr(link ? 'That link has expired or was already used. Send a new one.' : error.message);
+  const press = (k: string) => {
+    if (busy || !k) return;
+    if (k === 'del') { setPin((v) => v.slice(0, -1)); return; }
+    if (pin.length >= 4) return;
+    const next = pin + k;
+    setPin(next); setErr('');
+    if (next.length === 4) setTimeout(() => submit(next), 120);
   };
-  const ok = sent ? !!link || code.replace(/\D/g, '').length >= 6 : /.+@.+\..+/.test(email.trim());
+  const switchMode = () => { setMode(mode === 'create' ? 'signin' : 'create'); setPin(''); setFirstPin(null); setErr(''); };
+  const pinLabel = mode === 'signin' ? 'PIN' : firstPin == null ? 'CHOOSE A 4-DIGIT PIN' : 'ENTER IT AGAIN';
+  const nameField = { height: 54, borderRadius: 16, padding: '0 16px', font: '600 17px/1 var(--f-text)' } as const;
+
   return (
     <div className={'lf' + (dark ? '' : ' light')}>
       <Background dark={dark} health="Healthy" time={time} drift />
-      <div className="boot">
-        <span className="disp up scan" style={{ fontSize: 96, lineHeight: 0.8 }}>LFSTYL</span>
-        <span style={{ fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)', marginBottom: 10 }}>{sent ? `Check ${email.trim()}. Type the code, or press and hold the link in the email, tap Copy Link, and paste it here.` :'Sign in to sync your tasks, money and goals across devices.'}</span>
-        {sent
-          ? <input className="field" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code or link" autoComplete="one-time-code" autoCapitalize="off" autoCorrect="off" spellCheck={false} style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 17px/1 var(--f-text)' }} />
-          : <input className="field" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="email" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 17px/1 var(--f-text)' }} />}
-        {err && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--crit)' }}>{err}</span>}
-        <button className={'btn' + (ok && !busy ? '' : ' dim')} disabled={!ok || busy} onClick={sent ? verify : send}>{busy ? 'One moment…' : sent ? 'Sign in' : 'Email me a code'}</button>
-        {sent && <button className="back" style={{ alignSelf: 'center', margin: 0 }} onClick={() => { setSent(false); setCode(''); }}>USE A DIFFERENT EMAIL</button>}
-        {!sent && <button className="back" style={{ alignSelf: 'center', margin: 0 }} onClick={() => { setErr(''); setSent(true); }}>I ALREADY HAVE AN EMAIL</button>}
+      <div className="boot" style={{ gap: 12 }}>
+        <span className="disp up scan" style={{ fontSize: 88, lineHeight: 0.8 }}>LFSTYL</span>
+        <span style={{ fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)', marginBottom: 4 }}>{mode === 'create' ? 'Create your account. Your PIN keeps your data private and lets you sign in on another device.' : 'Welcome back. Sign in with your name and PIN.'}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <input className="field" value={first} onChange={(e) => setFirst(e.target.value)} placeholder="First name" autoComplete="given-name" autoCapitalize="words" style={nameField} />
+          <input className="field" value={last} onChange={(e) => setLast(e.target.value)} placeholder="Last name" autoComplete="family-name" autoCapitalize="words" style={nameField} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+          <span className="lbl">{pinLabel}</span>
+          <div style={{ display: 'flex', gap: 12 }} aria-label={`${pin.length} of 4 digits entered`}>
+            {[0, 1, 2, 3].map((i) => <span key={i} style={{ width: 14, height: 14, borderRadius: '50%', background: i < pin.length ? 'var(--ink)' : 'transparent', boxShadow: 'inset 0 0 0 1.5px var(--ink3)' }} />)}
+          </div>
+        </div>
+        <span style={{ minHeight: 18, fontSize: 13, fontWeight: 600, color: 'var(--crit)' }}>{busy ? <span style={{ color: 'var(--ink2)', fontWeight: 500 }}>One moment…</span> : err}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {KEYS.map((k, i) => k
+            ? <button key={i} className="key" aria-label={k === 'del' ? 'Delete' : k} onClick={() => press(k)}>{k === 'del' ? '⌫' : k}</button>
+            : <span key={i} />)}
+        </div>
+        <button className="back" style={{ alignSelf: 'center', margin: 0 }} onClick={switchMode}>{mode === 'create' ? 'I ALREADY HAVE AN ACCOUNT' : 'CREATE AN ACCOUNT'}</button>
       </div>
     </div>
   );
