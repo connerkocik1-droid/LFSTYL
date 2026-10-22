@@ -82,6 +82,8 @@ export interface Data {
   phases: Phase[];
   weighIns: [string, number][];
   weightTarget: number;
+  /** Nicotine tracking shown on Today, Goals and quick add. Missing in older saves means on. */
+  nicotineOn?: boolean;
   payPending: boolean;
   pendingDone: string | null;
   boost: { cats?: Partial<Record<CatId, number>> };
@@ -96,7 +98,7 @@ export type View =
   | { k: 'wean'; from?: View | null }
   | { k: 'review'; from?: View | null }
   | { k: 'setup'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed';
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -107,6 +109,8 @@ export interface DoneDraft { gid: string; stage: 1 | 2; to: string | null; manua
 export interface PlaceDraft { amt: number; to: string | null; src: string }
 export interface ReviewDraft { cats: Partial<Record<CatId, number>>; goals: Record<string, number> }
 export interface EdDraft { kind: 'inc' | 'bill'; id: string | null; name: string; amt: string; sched: Sched; date: string }
+/** idx is the phase being edited, or null for a new one. */
+export interface PhaseDraft { idx: number | null; start: string; end: string; limit: string; mg: string }
 export interface Drag { pid: string; from: number; to: number; dy: number; h: number }
 
 /** Screen state that is not saved. */
@@ -124,6 +128,7 @@ export interface UI {
   pl: PlaceDraft | null;
   rv: ReviewDraft | null;
   ed: EdDraft | null;
+  ph: PhaseDraft | null;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;

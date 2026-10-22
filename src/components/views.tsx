@@ -5,7 +5,7 @@ import { r2, sg, split, sum, u0, usd } from '@/lib/format';
 import { CATN, R, TIER, gi, nextP, phaseInfo, pouchesToday, rvUn } from '@/lib/logic';
 import type { View } from '@/lib/types';
 import { BillList, Pips, PouchNum, scrollProps, useDays14 } from './tabs';
-import { Check, Hero, Lens, Sec, useLf } from './ui';
+import { Check, Hero, Lens, Sec, Switch, useLf } from './ui';
 
 const U = (t: string) => t.toUpperCase();
 
@@ -172,7 +172,7 @@ export function WeanView() {
           </div>
         </div>
       </Lens>
-      <Sec l="LAST 14 DAYS" r={pi ? `${past.filter((d) => d.l != null && d.t <= d.l).length} OF 13 DAYS AT OR UNDER` : ''} />
+      <Sec l="LAST 14 DAYS" r={past.some((d) => d.l != null) ? `${past.filter((d) => d.l != null && d.t <= d.l).length} OF ${past.filter((d) => d.l != null).length} DAYS AT OR UNDER` : ''} />
       <div className="pane mx" style={{ padding: '16px 16px 12px' }}>
         <div style={{ display: 'flex', gap: 5 }}>
           {days.map((d) => (
@@ -187,21 +187,28 @@ export function WeanView() {
         </div>
         <div style={{ marginTop: 10, font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{pi ? <>LINE = THAT DAY&apos;S LIMIT · RED = OVER</> : 'POUCHES PER DAY'}</div>
       </div>
-      <div className="lbl" style={{ padding: '0 22px', margin: '24px 0 10px' }}>PLAN</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '20px 0 4px' }}>
+        <span className="lbl">PLAN</span>
+        <button onClick={() => upd((x) => R.openPhase(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ ADD PHASE</button>
+      </div>
       <div className="pane mx" style={{ padding: '4px 0' }}>
         {s.phases.map((ph, i) => {
           const st = i < pi!.idx ? 'past' : i === pi!.idx ? 'cur' : 'fut';
           const sameM = ph.start.slice(0, 7) === ph.end.slice(0, 7);
           return (
-            <div key={ph.start} style={{ position: 'relative', display: 'grid', gridTemplateColumns: '16px minmax(0,1fr) auto', columnGap: 14, alignItems: 'center', minHeight: 62, padding: '10px 16px 10px 18px' }}>
+            <button key={ph.start + i} onClick={() => upd((x) => R.openPhase(x, i))} aria-label={`Edit phase ${i + 1}`} style={{ position: 'relative', display: 'grid', gridTemplateColumns: '16px minmax(0,1fr) auto', columnGap: 14, alignItems: 'center', width: '100%', minHeight: 62, padding: '10px 16px 10px 18px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
               {i < s.phases.length - 1 && <div style={{ position: 'absolute', left: 25, top: 39, width: 2, height: 46, background: 'var(--line)' }} />}
               <div style={{ position: 'relative', width: 16, height: 16, borderRadius: '50%', ...(st === 'past' ? { background: 'var(--ink3)' } : st === 'cur' ? { background: 'var(--ink)', boxShadow: '0 0 0 4px var(--fill2)' } : { boxShadow: 'inset 0 0 0 1.5px var(--ink3)' }) }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span className="cap8">PHASE {i + 1}</span><span style={{ fontSize: 15, fontWeight: 500 }}>{(sameM ? D.dayOfMonth(ph.start) : D.dm(ph.start)) + ' – ' + D.dm(ph.end)}</span></div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}><span style={{ font: '600 15px/1 var(--f-text)' }}>{ph.limit} / day</span><span className="cap8">{ph.mg}</span></div>
-            </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}><span style={{ font: '600 15px/1 var(--f-text)' }}>{ph.limit} / day</span><span className="cap8">{ph.mg || '—'}</span></div>
+            </button>
           );
         })}
-        {!pi && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No plan yet. You can log pouches now; daily limits appear once a plan is set.</div>}
+        {!pi && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No plan yet. Tap + ADD PHASE to set dates, a daily limit and a strength for each step down. You can log pouches in the meantime.</div>}
+      </div>
+      <div className="pane mx" style={{ marginTop: 12, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ fontSize: 15, fontWeight: 500 }}>Track nicotine</span><span className="cap">SHOWS ON TODAY, GOALS AND QUICK ADD</span></span>
+        <Switch on label="Track nicotine" onChange={(on) => upd((x) => R.setNicotine(x, on))} />
       </div>
     </div>
   );

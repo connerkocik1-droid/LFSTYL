@@ -104,3 +104,12 @@ export function Keypad({ compact }: { compact?: boolean }) {
     </div>
   );
 }
+
+/** On/off switch in the app's style. */
+export function Switch({ on, label, onChange }: { on: boolean; label: string; onChange: (on: boolean) => void }) {
+  return (
+    <button role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} style={{ position: 'relative', flex: 'none', width: 52, height: 32, padding: 0, border: 0, borderRadius: 16, background: on ? 'var(--ink)' : 'var(--fill2)', boxShadow: on ? 'none' : 'inset 0 0 0 1px var(--line)', cursor: 'pointer', transition: 'background .2s' }}>
+      <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 26, height: 26, borderRadius: '50%', background: on ? 'var(--inv)' : 'var(--ink)', transition: 'left .25s cubic-bezier(.2,1.3,.4,1)' }} />
+    </button>
+  );
+}
