@@ -68,12 +68,12 @@ export interface Goal {
   doneTo?: string;
 }
 
-export interface Action { title: string; due: string | null; done: boolean }
+export interface Action { title: string; due: string | null; done: boolean; notes?: string }
 export interface Buy { title: string; est: number; actual: number | null; done: boolean; cat?: CatId | null }
 export interface Group { id: string; action: Action; buy: Buy | null }
 export interface Project { id: string; name: string; tier: Tier; goal: string | null; groups: Group[] }
 
-export interface Task { id: string; title: string; tier: Tier; due: string | null; touched: string; done: boolean }
+export interface Task { id: string; title: string; tier: Tier; due: string | null; touched: string; done: boolean; notes?: string }
 
 export interface Phase { start: string; end: string; limit: number; mg: string }
 
@@ -114,8 +114,10 @@ export type View =
   | { k: 'review'; from?: View | null }
   | { k: 'setup'; from?: View | null }
   | { k: 'subs'; from?: View | null }
-  | { k: 'plan'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp' | 'inc' | 'take';
+  | { k: 'plan'; from?: View | null }
+  | { k: 'weight'; from?: View | null }
+  | { k: 'settings'; from?: View | null };
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp' | 'inc' | 'take' | 'task' | 'proj' | 'weigh';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -132,6 +134,9 @@ export interface PhaseDraft { idx: number | null; start: string; end: string; li
 export interface SubDraft { id: string | null; name: string; amt: string; freq: Sub['freq']; next: string; cat: CatId }
 export interface GoalDraft { id: string | null; name: string; target: string; saved: string; mode: 'pace' | 'fixed'; n: string; per: string }
 export interface CatDraft { id: string | null; name: string; amt: string }
+/** Editing a task, a project action or a project buy step. */
+export interface TaskDraft { kind: 'task' | 'action' | 'buy'; id: string; pid?: string; title: string; tier: Tier; due: string; notes: string; est: string; cat: CatId | null }
+export interface ProjDraft { id: string; name: string; tier: Tier }
 export interface Drag { pid: string; from: number; to: number; dy: number; h: number }
 
 /** Screen state that is not saved. */
@@ -161,6 +166,10 @@ export interface UI {
   ie: { id: string; amt: string; src: string } | null;
   /** Amounts to move back to Unassigned, keyed like the place split. */
   tb: Record<string, string> | null;
+  td: TaskDraft | null;
+  pd: ProjDraft | null;
+  /** Weigh-in being entered: weight and date. */
+  wd: { w: string; date: string } | null;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;

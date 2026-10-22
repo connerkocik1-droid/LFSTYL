@@ -52,11 +52,15 @@ export default function Boot() {
   const clock = useClock();
   const [phase, setPhase] = useState<Phase>({ k: 'loading' });
   const [forced, setForced] = useState<'dark' | 'light' | null>(null);
+  // A shortcut link's action (?do=…), used once when the app opens.
+  const [action, setAction] = useState<string | null>(null);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const th = q.get('theme');
     if (th === 'dark' || th === 'light') setForced(th);
+    const act = q.get('do');
+    if (act) { setAction(act); q.delete('do'); window.history.replaceState(null, '', window.location.pathname + (q.toString() ? '?' + q : '')); }
     const demo = q.get('demo');
     if (demo && (DEMOS as readonly string[]).includes(demo)) {
       setPhase({ k: 'demo', state: buildDemo(demo), scroll: Number(q.get('scroll')) || undefined });
@@ -148,7 +152,8 @@ export default function Boot() {
   if (phase.k === 'signin') return <Account dark={dark} time={clock.time} onDone={(sess) => { saveSession(sess); setPhase({ k: 'loading' }); start(sess); }} />;
   if (phase.k === 'demo') return <LfApp initial={phase.state} dark={dark} time={clock.time} drift={!reduced} scrollTo={phase.scroll} />;
   const initial = clock.today > phase.state.today ? { ...phase.state, today: clock.today } : phase.state;
-  return <LfApp key={phase.rev} initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} />;
+  return <LfApp key={phase.rev} initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} account={phase.scope} action={action}
+    onSignOut={phase.token ? () => { saveSession(null); sessRef.current = null; serverAt.current = null; setAction(null); setPhase({ k: 'signin' }); } : undefined} />;
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];

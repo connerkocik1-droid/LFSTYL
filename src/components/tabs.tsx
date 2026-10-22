@@ -2,7 +2,7 @@
 
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, catName, freedPer, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
+import { CATN, R, TIER, catName, freedPer, safeToSpend, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
 import type { State } from '@/lib/types';
 import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
@@ -39,7 +39,7 @@ function useRecs(): Rec[] {
   const relL = (r: number, due: string) => (r < 0 ? `OVERDUE ${-r}D` : r === 0 ? 'DUE TODAY' : r === 1 ? 'DUE TOMORROW' : 'DUE ' + U(r <= 6 ? D.wd(due) : D.wdm(due)));
   const out: Rec[] = [];
   const tasks = s.tasks.filter((t) => !t.done);
-  const tr = (t: State['tasks'][number], reason: string, crit: boolean): Rec => ({ key: t.id, title: t.title, reason, crit, isBuy: false, tc: TIER[t.tier][1], tn: TIER[t.tier][0], check: () => upd((x) => R.toggleTask(x, t.id)) });
+  const tr = (t: State['tasks'][number], reason: string, crit: boolean): Rec => ({ key: t.id, title: t.title, reason, crit, isBuy: false, tc: TIER[t.tier][1], tn: TIER[t.tier][0], check: () => upd((x) => R.toggleTask(x, t.id)), open: () => upd((x) => R.openTask(x, 'task', t.id)) });
   type Item = { rel: number; t?: State['tasks'][number]; p?: State['projects'][number]; g?: State['projects'][number]['groups'][number] };
   const items: Item[] = [];
   tasks.forEach((t) => { const rel = taskRel(s, t.due); if (rel != null && rel <= 3) items.push({ rel, t }); });
@@ -63,10 +63,10 @@ export function Today() {
   const ov = m.over.slice().sort((a, b) => a.left - b.left);
   const recs = useRecs();
   const goMoney = () => upd((x) => { x.tab = 'money'; x.view = null; x.moff = 0; });
-  const hero = split(shown);
+  const hero = split(shown), safe = safeToSpend(s, m.left);
   return (
     <div className="screen" {...scrollProps}>
-      <div className="h-tab"><span className="t">Today</span><span className="mono" style={{ font: '500 11px/1 var(--f-mono)', letterSpacing: '.1em', color: 'var(--ink2)', paddingBottom: 4 }}>{U(D.wdm(s.today))}</span></div>
+      <div className="h-tab" style={{ paddingRight: 8 }}><span className="t">Today</span><span style={{ display: 'flex', alignItems: 'flex-end', gap: 2 }}><span className="mono" style={{ font: '500 11px/1 var(--f-mono)', letterSpacing: '.1em', color: 'var(--ink2)', paddingBottom: 4 }}>{U(D.wdm(s.today))}</span><button aria-label="Settings" onClick={() => upd((x) => { x.view = { k: 'settings' }; })} style={{ width: 44, height: 32, margin: '0 0 -6px', padding: 0, border: 0, background: 'none', color: 'var(--ink2)', font: '700 16px/1 var(--f-mono)', letterSpacing: '.05em', cursor: 'pointer' }}>···</button></span></div>
 
       {s.payPending && nx && (
         <div className="pane" style={{ margin: '0 14px 12px', padding: '16px 16px 16px 18px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'lfPop .45s cubic-bezier(.2,1.2,.3,1)' }}>
@@ -100,6 +100,12 @@ export function Today() {
           <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>LEFT THIS PAYCHECK</span><span>{daysTo == null ? 'NO PAY SET UP' : daysTo ? `${daysTo} DAYS TO PAYDAY` : 'PAYDAY'}</span></div>
           <Hero v={hero} style={{ marginTop: 12 }} />
           <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.3, color: 'var(--ink2)' }}>{`of ${usd(m.p.pay + m.p.extra)}` + (Math.abs(m.rollT) > 0.004 ? ` · ${sg(m.rollT)} rolled over` : '')}</div>
+          {safe && m.p.pay + m.p.extra > 0 && (
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 14, background: 'var(--fill)' }}>
+              <span className="lbl">SAFE TO SPEND TODAY</span>
+              <span style={{ font: '600 17px/1 var(--f-text)', color: m.left < 0 ? 'var(--crit)' : undefined }}>{m.left < 0 ? usd(m.left) + ' over' : usd(safe.perDay)}<span className="cap" style={{ marginLeft: 6 }}>{m.left < 0 ? '' : `/ DAY · ${safe.days}D`}</span></span>
+            </div>
+          )}
           <MoneyBars b={m.billsT} sp={m.spentT} g={m.goalsT} l={m.left} lgL={'LEFT ' + num(shown)} />
         </div>
       </Lens>
@@ -221,7 +227,7 @@ export function Tasks() {
                 <div key={t.id} className="row" style={{ gridTemplateColumns: '22px minmax(0,1fr)', minHeight: 60 }}>
                   {i > 0 && <div className="sep sep52" />}
                   <Check done={t.done} onClick={() => upd((x) => R.toggleTask(x, t.id))} label="Toggle done" />
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, cursor: 'pointer' }} onClick={() => upd((x) => R.openTask(x, 'task', t.id))}>
                     <div className="title" style={{ textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--ink3)' : 'var(--ink)' }}>{t.title}</div>
                     <div className="meta"><span className={'reason' + (crit ? ' crit' : '')}>{reason}</span><span className="tdot" style={{ background: TIER[t.tier][1] }} /><span>{TIER[t.tier][0]}</span></div>
                   </div>
@@ -415,7 +421,7 @@ export function Goals() {
           </div>
           <span style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{pi ? `PHASE ${pi.idx + 1} OF ${pi.n} · ${pi.mg}` : 'POUCHES TODAY · NO PLAN YET'}</span>
         </div>}
-        <div className="pane" style={{ padding: '15px 14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 10, gridColumn: nicotineOn(s) ? undefined : 'span 2' }}>
+        <div className="pane" onClick={() => upd((x) => { x.view = { k: 'weight' }; })} style={{ padding: '15px 14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer', gridColumn: nicotineOn(s) ? undefined : 'span 2' }}>
           <span style={{ fontSize: 14.5, fontWeight: 500 }}>Weight</span>
           {wv.length ? (
             <>

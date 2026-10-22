@@ -32,7 +32,10 @@ export function ProjectView({ id }: { id: string }) {
   const canBuy = p.groups.some((g) => !g.buy && !g.action.done);
   return (
     <div className="screen push" {...scrollProps}>
-      <Back />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 10 }}>
+        <Back />
+        <button onClick={() => upd((x) => R.openProj(x, p.id))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>EDIT</button>
+      </div>
       <div className="v-head">
         <div className="t">{p.name}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, fontSize: 12.5, color: 'var(--ink2)' }}><span className="tdot" style={{ background: TIER[p.tier][1] }} /><span>{TIER[p.tier][0]}</span><span style={{ color: 'var(--ink3)' }}>·</span><span>{dn} of {n} steps done</span></div>
@@ -65,7 +68,7 @@ export function ProjectView({ id }: { id: string }) {
                   <div className="link" />
                   <div className="row">
                     <Check done={b.done} square onClick={() => upd((x) => (b.done ? R.unbuy(x, p.id, g.id) : R.openPrice(x, p.id, g.id)))} label="Mark bought" />
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, cursor: 'pointer' }} onClick={() => upd((x) => R.openTask(x, 'buy', g.id, p.id))}>
                       <div className="title" style={{ textDecoration: b.done ? 'line-through' : 'none', color: b.done ? 'var(--ink3)' : 'var(--ink)' }}>{b.title}</div>
                       <div style={{ marginTop: 5, font: '500 9.5px/1.2 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{(b.done ? 'BOUGHT · FROM ' : 'BUY · FROM ') + src}</div>
                     </div>
@@ -78,7 +81,7 @@ export function ProjectView({ id }: { id: string }) {
               )}
               <div className="row">
                 <Check done={a.done} onClick={() => upd((x) => R.toggleAction(x, p.id, g.id))} label="Mark done" />
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, cursor: 'pointer' }} onClick={() => upd((x) => R.openTask(x, 'action', g.id, p.id))}>
                   <div className="title" style={{ textDecoration: a.done ? 'line-through' : 'none', color: a.done ? 'var(--ink3)' : 'var(--ink)' }}>{a.title}</div>
                   <div style={{ marginTop: 5, font: '500 9.5px/1.2 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{a.done ? 'DONE' : a.due ? 'DUE ' + U(D.wdm(a.due)) : 'NO DATE'}</div>
                 </div>
@@ -461,6 +464,94 @@ export function PlanView() {
         })}
         {!goals.length && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No goals yet. Tap + NEW GOAL, set the target and how many paychecks you have, and the amount per paycheck is worked out for you.</div>}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Weight
+
+export function WeightView() {
+  const { s, upd } = useLf();
+  const all = s.weighIns, last = all[all.length - 1];
+  const w30 = all.filter(([d]) => d >= D.add(s.today, -30)), delta = w30.length > 1 ? r2(w30[w30.length - 1][1] - w30[0][1]) : null;
+  const pts = all.slice(-60), vals = pts.map(([, w]) => w).concat(s.weightTarget ? [s.weightTarget] : []);
+  const lo = Math.min(...vals) - 1, hi = Math.max(...vals) + 1, W = 320, H = 120;
+  const x = (i: number) => (pts.length > 1 ? (i / (pts.length - 1)) * W : W / 2), y = (w: number) => ((hi - w) / Math.max(0.1, hi - lo)) * H;
+  const [tgt, setTgt] = useState(s.weightTarget ? String(s.weightTarget) : '');
+  return (
+    <div className="screen push" {...scrollProps}>
+      <Back />
+      <div className="v-head"><div className="t">Weight</div><div className="cap8" style={{ marginTop: 10 }}>{last ? `${all.length} WEIGH-INS · LAST ${U(D.dm(last[0]))}` : 'NO WEIGH-INS YET'}</div></div>
+      <Lens radius={30} inset={6} innerRadius={24} className="mx">
+        <div style={{ padding: '17px 20px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between' }}><span>LATEST</span><span>{delta == null ? '' : `${delta <= 0 ? '−' : '+'}${Math.abs(delta).toFixed(1)} LB IN 30 DAYS`}</span></div>
+          <div className="disp scan" style={{ display: 'flex', alignItems: 'baseline', lineHeight: 0.8 }}><span style={{ fontSize: 100 }}>{last ? last[1].toFixed(1) : '—'}</span><span style={{ fontSize: 36, marginLeft: 6 }}>LB</span></div>
+          {s.weightTarget > 0 && last && <span style={{ fontSize: 13, color: 'var(--ink2)' }}>{Math.abs(r2(last[1] - s.weightTarget)).toFixed(1)} lb {last[1] > s.weightTarget ? 'to lose' : last[1] < s.weightTarget ? 'to gain' : '· at target'} to reach {s.weightTarget}</span>}
+          <button className="btn" onClick={() => upd((x) => R.openWeigh(x))} style={{ height: 52, borderRadius: 16 }}>Log weigh-in</button>
+        </div>
+      </Lens>
+      {pts.length > 1 && (
+        <>
+          <Sec l="TREND" r={`${pts.length} WEIGH-INS`} />
+          <div className="pane mx" style={{ padding: '16px 16px 12px' }}>
+            <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
+              {s.weightTarget > 0 && <line x1="0" x2={W} y1={y(s.weightTarget)} y2={y(s.weightTarget)} stroke="var(--ink3)" strokeWidth="1.5" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />}
+              <polyline points={pts.map(([, w], i) => `${x(i).toFixed(1)},${y(w).toFixed(1)}`).join(' ')} fill="none" stroke="var(--ink)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+            </svg>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}><span>{U(D.dm(pts[0][0]))}</span><span>{s.weightTarget ? 'DASHED = TARGET' : ''}</span><span>{U(D.dm(pts[pts.length - 1][0]))}</span></div>
+          </div>
+        </>
+      )}
+      <div className="pane mx" style={{ marginTop: 12, padding: '10px 12px 10px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ fontSize: 15, fontWeight: 500 }}>Target</span><span className="cap">THE WEIGHT YOU&apos;RE WORKING TOWARD</span></span>
+        <div style={{ position: 'relative', width: 116 }}>
+          <input className="field" aria-label="Target weight" value={tgt} onChange={(e) => setTgt(e.target.value.replace(/[^\d.]/g, ''))} onBlur={() => upd((x) => R.setWeightTarget(x, parseFloat(tgt) || 0))} placeholder="—" inputMode="decimal" style={{ height: 44, padding: '0 38px 0 12px', textAlign: 'right', font: '600 16px/1 var(--f-text)' }} />
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', font: '500 10px/1 var(--f-mono)', color: 'var(--ink3)' }}>LB</span>
+        </div>
+      </div>
+      {all.length > 0 && (
+        <>
+          <Sec l="LOG" r={all.length} />
+          <div className="pane list">
+            {all.slice().reverse().slice(0, 60).map(([d, w], i) => (
+              <div key={d} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, padding: '0 6px 0 18px' }}>
+                {i > 0 && <div className="sep" />}
+                <span className="cap">{U(D.wdm(d))}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ font: '600 15px/1 var(--f-text)' }}>{w.toFixed(1)} lb</span><button aria-label={`Remove weigh-in on ${D.dm(d)}`} onClick={() => upd((x) => R.delWeigh(x, d))} style={{ width: 40, height: 40, border: 0, background: 'none', color: 'var(--ink3)', font: '500 16px/1 var(--f-mono)', cursor: 'pointer' }}>×</button></span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Settings
+
+export function SettingsView() {
+  const { s, upd, account, signOut } = useLf();
+  const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 62, padding: '10px 16px 10px 18px', position: 'relative' } as const;
+  return (
+    <div className="screen push" {...scrollProps}>
+      <Back />
+      <div className="v-head"><div className="t">Settings</div>{account && <div className="cap8" style={{ marginTop: 10 }}>SIGNED IN AS {U(account)}</div>}</div>
+      <div className="pane list">
+        <div style={row}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ fontSize: 15, fontWeight: 500 }}>Track nicotine</span><span className="cap">POUCH COUNTER ON TODAY, GOALS AND QUICK ADD</span></span>
+          <Switch on={s.nicotineOn !== false} label="Track nicotine" onChange={(on) => upd((x) => R.setNicotine(x, on))} />
+        </div>
+      </div>
+      <Sec l="SHORTCUTS" />
+      <div className="pane mx" style={{ padding: '14px 18px', fontSize: 13.5, lineHeight: 1.5, color: 'var(--ink2)' }}>
+        These links open LFSTYL straight to an action. On iPhone, add one to the Shortcuts app with <b>Open URL</b> and put it on your home screen. On Android, long-press the app icon.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, font: '500 11px/1.4 var(--f-mono)', color: 'var(--ink)' }}>
+          {[['Log expense', 'expense'], ['Pouch +1', 'pouch'], ['Add task', 'task'], ['Add income', 'income']].map(([l, k]) => <span key={k}>{l} · {typeof window !== 'undefined' ? window.location.origin : ''}/?do={k}</span>)}
+        </div>
+      </div>
+      {signOut && (
+        <button className="btn-fill" onClick={signOut} style={{ width: 'calc(100% - 28px)', margin: '22px 14px 0', height: 52, borderRadius: 16, font: '600 15px/1 var(--f-text)' }}>Sign out</button>
+      )}
     </div>
   );
 }

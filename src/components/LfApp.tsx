@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clone } from '@/lib/format';
-import { catchUp, money } from '@/lib/logic';
+import { R, catchUp, money, pouchesToday } from '@/lib/logic';
 import type { State, Tab } from '@/lib/types';
 import { Sheets } from './sheets';
 import { Goals, Library, Money, Tasks, Today } from './tabs';
 import { Ctx, Lens, LensButton, type LfCtx } from './ui';
-import { GoalView, PlanView, ProjectView, ReviewView, SetupView, SubsView, WeanView } from './views';
+import { GoalView, PlanView, ProjectView, ReviewView, SettingsView, SetupView, SubsView, WeanView, WeightView } from './views';
 
 export type TimeOfDay = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
@@ -35,9 +35,13 @@ export function Background({ dark, health, time, drift }: { dark: boolean; healt
 
 const TABS: [Tab, string][] = [['today', 'TODAY'], ['tasks', 'TASKS'], ['money', 'MONEY'], ['goals', 'GOALS'], ['library', 'LIBRARY']];
 
-export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }: {
+export default function LfApp({ initial, dark, time, drift, onChange, scrollTo, account, onSignOut, action }: {
   initial: State; dark: boolean; time: TimeOfDay; drift: boolean;
   onChange?: (s: State) => void;
+  account?: string;
+  onSignOut?: () => void;
+  /** Opened from a shortcut link (?do=…): start that action. */
+  action?: string | null;
   /** Start scrolled down this far (demo screens). */
   scrollTo?: number;
 }) {
@@ -64,6 +68,17 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }
   }, [initial.today]);
 
   useEffect(() => { onChange?.(s); }, [s, onChange]);
+
+  // Shortcut links: ?do=expense | income | task | pouch
+  useEffect(() => {
+    if (!action) return;
+    const blank = { amt: '', cat: null, note: '', y: false };
+    if (action === 'expense') upd((x) => { x.sheet = 'expense'; x.draft = blank; });
+    if (action === 'income') upd((x) => { x.sheet = 'income'; x.draft = blank; });
+    if (action === 'task') upd((x) => R.openStep(x, 'task', 'action'));
+    if (action === 'pouch') upd((x) => { R.pouch(x, 1); x.toast = { t: `Pouch logged · ${pouchesToday(x)} today` }; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action]);
 
   // Toasts dismiss themselves.
   const toastId = s.toast?.id;
@@ -133,7 +148,7 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }
     el.style.setProperty('--ty', (((e.clientY - r.top) / r.height) * 2 - 1).toFixed(3));
   };
 
-  const ctx: LfCtx = { s, m, upd, patch, dark, shown, startDrag };
+  const ctx: LfCtx = { s, m, upd, patch, dark, shown, startDrag, account, signOut: onSignOut };
   const v = s.view;
   const t = s.toast;
 
@@ -154,6 +169,8 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }
         {v?.k === 'setup' && <SetupView />}
         {v?.k === 'subs' && <SubsView />}
         {v?.k === 'plan' && <PlanView />}
+        {v?.k === 'weight' && <WeightView />}
+        {v?.k === 'settings' && <SettingsView />}
 
         {v?.k !== 'review' && (
           <nav style={{ position: 'absolute', left: 14, right: 14, bottom: 'var(--bb)', height: 62, display: 'flex', gap: 10, zIndex: 20 }}>
