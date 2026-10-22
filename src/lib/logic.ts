@@ -8,7 +8,10 @@ const MONTH = (iso: string) => iso.slice(0, 7);
 export const periodLabel = (start: string, end: string) =>
   (MONTH(start) === MONTH(end) ? D.dayOfMonth(start) + ' – ' + D.dm(end) : D.dm(start) + ' – ' + D.dm(end)).toUpperCase();
 
-export const CATN: Record<CatId, string> = { groc: 'Groceries', gas: 'Gas', eat: 'Eating out', house: 'Household', fun: 'Fun' };
+export const CATN: Record<string, string> = { groc: 'Groceries', gas: 'Gas', eat: 'Eating out', house: 'Household', fun: 'Fun' };
+/** A category's name: yours if you added or renamed it, otherwise the starter name. */
+export const catName = (s: State, id: CatId) => s.catNames?.[id] ?? CATN[id] ?? 'Category';
+
 export const TIER: Record<Tier, [string, string]> = { P: ['Personal', 'var(--tP)'], F: ['Financial', 'var(--tF)'], W: ['Work', 'var(--tW)'] };
 
 /** Money in the current paycheck period. */
@@ -18,7 +21,7 @@ export function money(s: State) {
   const cats = p.cats.map((c) => {
     const spent = r2(sum(exp.filter((e) => e.cat === c.id), (e) => e.amt));
     const avail = r2(c.alloc + c.roll);
-    return { id: c.id, name: CATN[c.id], alloc: c.alloc, roll: c.roll, spent, avail, left: r2(avail - spent) };
+    return { id: c.id, name: catName(s, c.id), alloc: c.alloc, roll: c.roll, spent, avail, left: r2(avail - spent) };
   });
   const billsT = sum(p.bills, (b) => b.a), allocT = sum(cats, (c) => c.alloc), rollT = r2(sum(cats, (c) => c.roll));
   const spentT = r2(sum(cats, (c) => c.spent)), goalsT = r2(sum(p.goals, (g) => g.a));
@@ -141,33 +144,40 @@ export const R = {
     const amt = parseFloat(s.draft.amt), cat = s.draft.cat;
     if (!(amt > 0) || !cat) return;
     const id = 'x' + s.seq++;
-    s.expenses.unshift({ id, amt, cat, note: s.draft.note.trim() || CATN[cat], date: s.draft.y ? D.add(s.today, -1) : s.today, per: s.period.id });
+    s.expenses.unshift({ id, amt, cat, note: s.draft.note.trim() || catName(s, cat), date: s.draft.y ? D.add(s.today, -1) : s.today, per: s.period.id });
     s.lastCat = cat; s.sheet = null; s.draft = newDraft();
-    s.toast = { t: `Logged ${usd(amt)} · ${CATN[cat]}`, undo: id };
+    s.toast = { t: `Logged ${usd(amt)} · ${catName(s, cat)}`, undo: id };
   },
   addIncome(s: State) {
     const amt = parseFloat(s.draft.amt);
     if (!(amt > 0)) return;
     s.period.extra = r2(s.period.extra + amt);
-    s.pl = { amt, to: null, src: s.draft.note.trim() || 'Extra income' };
+    s.pl = { amt, split: {}, src: s.draft.note.trim() || 'Extra income' };
     s.draft = newDraft(); s.sheet = 'place';
   },
-  openPlace(s: State, amt: number) { s.pl = { amt, to: null, src: 'Unassigned' }; s.sheet = 'place'; },
+  openPlace(s: State, amt: number) { s.pl = { amt, split: {}, src: 'Unassigned' }; s.sheet = 'place'; },
+  /** Places unassigned money across any number of categories and goals; whatever isn't placed stays unassigned. */
   place(s: State) {
-    if (!s.pl || !s.pl.to) return;
-    const { amt, to } = s.pl;
-    if (to.startsWith('c:')) {
-      const c = s.period.cats.find((x) => x.id === to.slice(2))!;
-      c.alloc = r2(c.alloc + amt);
-      s.toast = { t: `${usd(amt)} added to ${CATN[c.id]}` };
-    } else {
-      const g = s.goals.find((x) => x.id === to.slice(2))!;
-      g.saved = r2(g.saved + amt); g.hist.unshift([s.today, amt, 'Extra contribution']);
-      const pg = s.period.goals.find((x) => x.id === g.id);
-      if (pg) pg.a = r2(pg.a + amt); else s.period.goals.push({ id: g.id, a: amt });
-      s.toast = { t: `${usd(amt)} added to ${g.name}` };
-      if (g.saved >= g.target - 0.004) s.pendingDone = g.id;
+    if (!s.pl) return;
+    const parts = Object.entries(s.pl.split).map(([to, v]) => [to, r2(parseFloat(v) || 0)] as const).filter(([, a]) => a > 0);
+    const total = r2(parts.reduce((t, [, a]) => t + a, 0));
+    if (!parts.length || total > s.pl.amt + 0.004) return;
+    for (const [to, amt] of parts) {
+      if (to.startsWith('c:')) {
+        const c = s.period.cats.find((x) => x.id === to.slice(2));
+        if (c) c.alloc = r2(c.alloc + amt);
+      } else {
+        const g = s.goals.find((x) => x.id === to.slice(2));
+        if (!g) continue;
+        g.saved = r2(g.saved + amt); g.hist.unshift([s.today, amt, 'Extra contribution']);
+        const pg = s.period.goals.find((x) => x.id === g.id);
+        if (pg) pg.a = r2(pg.a + amt); else s.period.goals.push({ id: g.id, a: amt });
+        if (g.kind === 'save' && g.saved >= g.target - 0.004) s.pendingDone = g.id;
+      }
     }
+    const rest = r2(s.pl.amt - total), first = parts[0][0];
+    const where = parts.length === 1 ? (first.startsWith('c:') ? catName(s, first.slice(2)) : s.goals.find((x) => x.id === first.slice(2))?.name) : `${parts.length} places`;
+    s.toast = { t: `${usd(total)} placed in ${where}` + (rest > 0.004 ? ` · ${usd(rest)} still unassigned` : '') };
     s.pl = null; s.sheet = null;
   },
   openPrice(s: State, pid: string, gid: string) {
@@ -184,7 +194,7 @@ export const R = {
     buy.done = true; buy.actual = amt;
     s.expenses.unshift({ id: 'x' + s.seq++, amt, cat: goal ? null : cat, goal: goal ? goal.id : null, note: buy.title, proj: p.name, date: s.today, per: s.period.id, src: 'buy' });
     if (!goal) { buy.cat = cat; s.lastCat = cat; }
-    s.toast = { t: `Bought · ${usd(amt)} from ${goal ? goal.name : CATN[cat]}` };
+    s.toast = { t: `Bought · ${usd(amt)} from ${goal ? goal.name : catName(s, cat)}` };
     s.pr = null; s.sheet = null;
     if (goal && goal.status !== 'done' && gi(s, goal).rem <= 0) s.pendingDone = goal.id;
   },
@@ -251,7 +261,7 @@ export const R = {
       if (!a) { a = { id: 'savings', name: 'Savings account', kind: 'acct', target: 0, saved: 0, per: 0, hist: [] }; s.goals.push(a); }
       a.per += amt; label = a.name;
     } else if (to.startsWith('g:')) { const t = s.goals.find((x) => x.id === to.slice(2))!; t.per = goalPer(s, t) + amt; delete t.pace; label = t.name; }
-    else if (to.startsWith('c:')) { const id = to.slice(2) as CatId; s.boost.cats = s.boost.cats || {}; s.boost.cats[id] = (s.boost.cats[id] || 0) + amt; label = CATN[id]; }
+    else if (to.startsWith('c:')) { const id = to.slice(2); s.boost.cats = s.boost.cats || {}; s.boost.cats[id] = (s.boost.cats[id] || 0) + amt; label = catName(s, id); }
     g.status = 'done'; g.doneOn = s.today; g.doneTo = amt > 0 ? `${usd(amt, 0)} A PAYCHECK → ${label.toUpperCase()}` : 'CLOSED'; g.per = 0; delete g.pace;
     s.pendingDone = null; s.dn = null; s.sheet = null;
     s.toast = { t: amt > 0 ? `From next paycheck, ${usd(amt, 0)} goes to ${label}` : `${g.name} closed` };
@@ -379,6 +389,34 @@ export const R = {
     }
     s.gd = null; s.sheet = null;
   },
+  openCat(s: State, id: string | null) {
+    s.cd = id ? { id, name: catName(s, id), amt: String(planCat(s, id) || '') } : { id: null, name: '', amt: '' };
+    s.sheet = 'cat';
+  },
+  saveCat(s: State) {
+    const e = s.cd!, name = e.name.trim(), amt = Math.max(0, r2(parseFloat(String(e.amt).replace(/[$,]/g, '')) || 0));
+    if (!name) return;
+    s.catNames = s.catNames || {};
+    s.plan = s.plan || { cats: {} };
+    const id = e.id || 'c' + s.seq++;
+    if (!e.id) s.period.cats.push({ id, alloc: 0, roll: 0 });
+    s.catNames[id] = name;
+    s.plan.cats[id] = amt;
+    s.toast = { t: e.id ? 'Saved ' + name : `${name} added · ${usd(amt, 0)} a paycheck from your next paycheck` };
+    s.cd = null; s.sheet = null;
+  },
+  /** Removes a category with no spending this period; its money goes back to Unassigned. */
+  delCat(s: State) {
+    const id = s.cd!.id;
+    if (!id || s.expenses.some((x) => x.per === s.period.id && x.cat === id)) return;
+    const name = catName(s, id);
+    s.period.cats = s.period.cats.filter((c) => c.id !== id);
+    if (s.plan) delete s.plan.cats[id];
+    (s.subs || []).forEach((v) => { if (v.cat === id && s.period.cats[0]) v.cat = s.period.cats[0].id; });
+    if (s.lastCat === id && s.period.cats[0]) s.lastCat = s.period.cats[0].id;
+    s.toast = { t: 'Removed ' + name };
+    s.cd = null; s.sheet = null;
+  },
   setPlanCat(s: State, id: CatId, v: number) {
     s.plan = s.plan || { cats: {} };
     s.plan.cats[id] = Math.max(0, r2(v));
@@ -491,7 +529,7 @@ export function buildDemo(start: string): State {
     case 'expense': s.sheet = 'expense'; Object.assign(s.draft, { amt: '12.50', cat: 'eat', note: 'Lunch with Sam' }); break;
     case 'expense-done': Object.assign(s.draft, { amt: '12.50', cat: 'eat', note: 'Lunch with Sam' }); R.logExpense(s); break;
     case 'income': s.sheet = 'income'; Object.assign(s.draft, { amt: '200', note: 'Sold old bike' }); break;
-    case 'place': Object.assign(s.draft, { amt: '200', note: 'Sold old bike' }); R.addIncome(s); s.pl!.to = 'g:japan'; break;
+    case 'place': Object.assign(s.draft, { amt: '200', note: 'Sold old bike' }); R.addIncome(s); s.pl!.split = { 'g:japan': '200' }; break;
     case 'over': s.pouchLog[s.today] = 7; break;
     case 'wean': s.tab = 'goals'; s.view = { k: 'wean' }; break;
     case 'setup': s.tab = 'money'; s.view = { k: 'setup' }; break;
