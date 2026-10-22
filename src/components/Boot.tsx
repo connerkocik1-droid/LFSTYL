@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { localToday } from '@/lib/dates';
 import { DEMOS, buildDemo, catchUp } from '@/lib/logic';
-import { fileApi, loadLocal, loadRemote, loadSession, pickData, saveLocal, saveRemote, saveSession, signIn, signUp, supabase, type Saved, type Session } from '@/lib/persist';
+import { fileApi, loadLocal, pushApi, loadRemote, loadSession, pickData, saveLocal, saveRemote, saveSession, signIn, signUp, supabase, type Saved, type Session } from '@/lib/persist';
 import { emptyData, freshUI } from '@/lib/seed';
 import type { State } from '@/lib/types';
 import LfApp, { Background, type TimeOfDay } from './LfApp';
@@ -153,7 +153,7 @@ export default function Boot() {
   if (phase.k === 'demo') return <LfApp initial={phase.state} dark={dark} time={clock.time} drift={!reduced} scrollTo={phase.scroll} />;
   const initial = clock.today > phase.state.today ? { ...phase.state, today: clock.today } : phase.state;
   const sbc = supabase(), sess = sessRef.current;
-  return <LfApp key={phase.rev} initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} account={phase.scope} action={action} files={sbc && sess && phase.token ? fileApi(sbc, sess) : undefined}
+  return <LfApp key={phase.rev} initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} account={phase.scope} action={action} files={sbc && sess && phase.token ? fileApi(sbc, sess) : undefined} push={sbc && sess && phase.token ? pushApi(sbc, sess) : undefined}
     onSignOut={phase.token ? () => { saveSession(null); sessRef.current = null; serverAt.current = null; setAction(null); setPhase({ k: 'signin' }); } : undefined} />;
 }
 

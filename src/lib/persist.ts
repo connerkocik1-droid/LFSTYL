@@ -117,3 +117,61 @@ export function fileApi(sb: SupabaseClient, sess: Session): FileApi {
     },
   };
 }
+
+// ---------------------------------------------------------------- Reminders (web push)
+
+export interface PushApi {
+  /** 'unsupported' until the app is on the home screen (iPhone) or the browser has no push. */
+  status: () => Promise<'on' | 'off' | 'unsupported' | 'blocked'>;
+  enable: () => Promise<{ ok: boolean; error?: string }>;
+  disable: () => Promise<void>;
+  test: () => Promise<{ ok: boolean; error?: string }>;
+}
+
+const b64url = (s: string) => {
+  const pad = '='.repeat((4 - (s.length % 4)) % 4), raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+};
+
+export function pushApi(sb: SupabaseClient, sess: Session): PushApi {
+  const call = async (body: Record<string, unknown>) => {
+    const { data, error } = await sb.functions.invoke('lfstyl-push', { body });
+    if (error) return { ok: false, error: "Can't reach the reminder service." } as { ok: boolean; error?: string; key?: string };
+    return data as { ok: boolean; error?: string; key?: string };
+  };
+  const supported = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const reg = () => navigator.serviceWorker.ready;
+  return {
+    status: async () => {
+      if (!supported()) return 'unsupported';
+      if (Notification.permission === 'denied') return 'blocked';
+      const sub = await (await reg()).pushManager.getSubscription();
+      return sub ? 'on' : 'off';
+    },
+    enable: async () => {
+      if (!supported()) return { ok: false, error: 'Add LFSTYL to your Home Screen first, then turn reminders on from there.' };
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return { ok: false, error: 'Notifications are blocked. Allow them for LFSTYL in Settings.' };
+      const k = await call({ action: 'key' });
+      if (!k.ok || !k.key) return { ok: false, error: k.error || "Can't reach the reminder service." };
+      const r = await reg();
+      const sub = (await r.pushManager.getSubscription()) || (await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64url(k.key) }));
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const s = await call({ action: 'subscribe', token: sess.token, sub: sub.toJSON(), tz });
+      return s.ok ? { ok: true } : { ok: false, error: s.error };
+    },
+    disable: async () => {
+      if (!supported()) return;
+      const sub = await (await reg()).pushManager.getSubscription();
+      if (!sub) return;
+      await call({ action: 'unsubscribe', token: sess.token, endpoint: sub.endpoint });
+      await sub.unsubscribe();
+    },
+    test: async () => {
+      if (!supported()) return { ok: false, error: 'Reminders are not on.' };
+      const sub = await (await reg()).pushManager.getSubscription();
+      if (!sub) return { ok: false, error: 'Reminders are not on.' };
+      return call({ action: 'test', token: sess.token, endpoint: sub.endpoint });
+    },
+  };
+}

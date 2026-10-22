@@ -531,7 +531,7 @@ export function WeightView() {
 // ---------------------------------------------------------------- Settings
 
 export function SettingsView() {
-  const { s, upd, account, signOut } = useLf();
+  const { s, upd, account, signOut, push } = useLf();
   const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 62, padding: '10px 16px 10px 18px', position: 'relative' } as const;
   return (
     <div className="screen push" {...scrollProps}>
@@ -543,6 +543,7 @@ export function SettingsView() {
           <Switch on={s.nicotineOn !== false} label="Track nicotine" onChange={(on) => upd((x) => R.setNicotine(x, on))} />
         </div>
       </div>
+      {push && <Reminders />}
       <Sec l="SHORTCUTS" />
       <div className="pane mx" style={{ padding: '14px 18px', fontSize: 13.5, lineHeight: 1.5, color: 'var(--ink2)' }}>
         These links open LFSTYL straight to an action. On iPhone, add one to the Shortcuts app with <b>Open URL</b> and put it on your home screen. On Android, long-press the app icon.
@@ -661,5 +662,36 @@ export function DocView({ id }: { id: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** The Reminders switch: one summary at 9 AM on days with something due. */
+function Reminders() {
+  const { push } = useLf();
+  const [st, setSt] = useState<'on' | 'off' | 'unsupported' | 'blocked' | 'busy'>('busy');
+  const [msg, setMsg] = useState('');
+  useEffect(() => { push!.status().then(setSt).catch(() => setSt('unsupported')); }, [push]);
+  const toggle = async (on: boolean) => {
+    setMsg(''); setSt('busy');
+    if (on) { const r = await push!.enable(); if (!r.ok) setMsg(r.error || "Couldn't turn reminders on."); }
+    else await push!.disable();
+    setSt(await push!.status());
+  };
+  const test = async () => { setMsg('Sending…'); const r = await push!.test(); setMsg(r.ok ? 'Sent. It should arrive in a few seconds.' : r.error || "Couldn't send."); };
+  const note = st === 'unsupported' ? 'ON IPHONE, ADD LFSTYL TO YOUR HOME SCREEN AND OPEN IT FROM THERE' : st === 'blocked' ? 'NOTIFICATIONS ARE BLOCKED FOR LFSTYL IN YOUR PHONE SETTINGS' : 'PAYDAY, BILLS, SUBSCRIPTIONS, TASKS AND EXPIRING DOCUMENTS · 9 AM';
+  return (
+    <>
+      <Sec l="REMINDERS" />
+      <div className="pane list">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 62, padding: '10px 16px 10px 18px' }}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ fontSize: 15, fontWeight: 500 }}>Daily reminders</span><span className="cap" style={{ lineHeight: 1.4 }}>{note}</span></span>
+          <Switch on={st === 'on'} label="Daily reminders" onChange={(on) => (st === 'busy' || st === 'unsupported' ? undefined : toggle(on))} />
+        </div>
+        {st === 'on' && (
+          <button onClick={test} style={{ position: 'relative', width: '100%', minHeight: 50, padding: '0 18px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', font: '600 14px/1 var(--f-text)', cursor: 'pointer' }}><span className="sep" />Send a test reminder</button>
+        )}
+      </div>
+      {msg && <div style={{ padding: '10px 22px 0', fontSize: 13, lineHeight: 1.4, color: msg.startsWith('Sen') ? 'var(--ink2)' : 'var(--crit)' }}>{msg}</div>}
+    </>
   );
 }
