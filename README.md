@@ -33,15 +33,14 @@ The design is the 1c "Lens + panes" direction: thick glass on the money hero, th
 
 Not built yet, matching the design: weight detail, Library document and event detail, the task edit sheet, and the desktop layout. The Library tab shows the design's sample folders and events.
 
-## Sync with Supabase
+## Accounts and sync
 
-The app syncs with the LFSTYL Supabase project (`pocxcrqwlacfomucrjpy`). Its URL and publishable key are built in as defaults in `src/lib/persist.ts`. Both are public values that ship to every browser, and row-level security keeps each user's row private. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` override them; set either one to `off` to keep data on the device only.
+You create an account with your first name, last name and a 4-digit PIN (entered twice), and sign in on other devices with the same three. Email can be linked later.
 
-You sign in once with your email. The app then saves every change locally right away and to Supabase shortly after, and on launch it uses whichever copy is newer.
-
-**Email templates:** sign-in uses a 6-digit code, because inside the installed app a link would open the browser instead. In Supabase, go to **Authentication → Email Templates** and add `{{ .Token }}` to both **Magic Link** and **Confirm signup** (your first sign-in uses Confirm signup). The link in those emails still works if you open the app in a browser.
-
-The schema is in `supabase/migrations/0001_lfstyl_state.sql` and has already been applied.
+- **Sync:** the app saves every change on the device right away and to Supabase shortly after. On launch it uses whichever copy is newer. If it's offline, it opens with what's on the device.
+- **Security:** PINs are stored as bcrypt hashes. Five wrong PINs lock the account for 15 minutes. The tables are closed to the public API key; the app can only call `lfstyl_sign_up`, `lfstyl_sign_in`, `lfstyl_load` and `lfstyl_save`, which check the PIN or a session token first. A 4-digit PIN is still a short secret, so link an email or move to a longer secret before storing anything sensitive.
+- **Project:** the Supabase URL and publishable key are built in as defaults in `src/lib/persist.ts` (both are public values). `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` override them; set either to `off` to keep data on the device only.
+- **Schema:** `supabase/migrations/0002_pin_accounts.sql`, already applied. `0001` (email sign-in) is superseded; its empty `lfstyl_state` table is unused.
 
 ## Icons
 
