@@ -728,11 +728,103 @@ function TakeSheet() {
   );
 }
 
+// ---------------------------------------------------------------- Edit task / step
+
+function TaskSheet() {
+  const { s, m, dark, upd, patch } = useLf();
+  const d = s.td!;
+  const p = d.pid ? s.projects.find((x) => x.id === d.pid) : null, g = p?.groups.find((x) => x.id === d.id);
+  const bought = d.kind !== 'task' && !!g?.buy?.done;
+  const linked = !!p?.goal;
+  const est = parseFloat(d.est), ok = !!d.title.trim() && (d.kind !== 'buy' || est >= 0);
+  const set = (k: 'title' | 'due' | 'notes' | 'est') => (ev: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const v = ev.target.value; patch((x) => ({ td: { ...x.td!, [k]: v } })); };
+  const fieldL = { font: '500 9.5px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' } as const;
+  const head = d.kind === 'task' ? 'EDIT TASK' : d.kind === 'action' ? 'EDIT STEP · ' + U(p?.name || '') : 'EDIT BUY STEP · ' + U(p?.name || '');
+  return (
+    <Sheet>
+      <span className="lbl">{head}</span>
+      <input className="field" value={d.title} onChange={set('title')} placeholder="Title" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 18px/1 var(--f-text)' }} />
+      {d.kind !== 'buy' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ ...fieldL, flex: 1 }}>DUE</span>
+          {d.due && <button onClick={() => upd((x) => { x.td!.due = ''; })} style={{ height: 44, padding: '0 10px', border: 0, background: 'none', color: 'var(--ink2)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.08em', cursor: 'pointer' }}>CLEAR</button>}
+          <input className="field" type="date" value={d.due} onChange={set('due')} aria-label="Due date" style={{ width: 170, height: 48, padding: '0 12px', fontWeight: 600, colorScheme: dark ? 'dark' : 'light' }} />
+        </div>
+      )}
+      {d.kind === 'buy' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="lbl" style={{ flex: 1 }}>ESTIMATED PRICE</span>
+            <div style={{ position: 'relative', width: 140 }}>
+              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', font: '600 16px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+              <input className="field" value={d.est} onChange={set('est')} inputMode="decimal" aria-label="Estimated price" style={{ height: 48, padding: '0 14px 0 28px', font: '600 16px/1 var(--f-text)', textAlign: 'right' }} />
+            </div>
+          </div>
+          {!linked && d.cat && (
+            <>
+              <span className="lbl">COMES OUT OF</span>
+              <Chips items={m.cats.map((c) => [c.id, c.name] as [CatId, string])} sel={d.cat} onPick={(id) => upd((x) => { x.td!.cat = id; })} />
+            </>
+          )}
+        </>
+      )}
+      {d.kind === 'task' && <Chips items={tiers()} sel={d.tier} cols={3} onPick={(t) => upd((x) => { x.td!.tier = t; })} />}
+      {d.kind !== 'buy' && <textarea className="field" value={d.notes} onChange={set('notes')} placeholder="Notes" rows={3} style={{ height: 'auto', padding: '12px 14px', lineHeight: 1.4, resize: 'none' }} />}
+      {bought && <span className="cap" style={{ lineHeight: 1.4 }}>THE BUY STEP IS MARKED BOUGHT · UNMARK IT BEFORE DELETING</span>}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn-fill" disabled={bought} onClick={() => upd((x) => R.delTask(x))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)', opacity: bought ? 0.35 : 1 }}>Delete</button>
+        <button className={'btn' + (ok ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.saveTask(x))}>Save</button>
+      </div>
+      {d.kind === 'action' && g?.buy && <span className="cap" style={{ textAlign: 'center' }}>DELETING THIS STEP ALSO DELETES ITS BUY STEP</span>}
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Edit project
+
+function ProjSheet() {
+  const { s, upd, patch } = useLf();
+  const d = s.pd!, p = s.projects.find((x) => x.id === d.id);
+  return (
+    <Sheet>
+      <span className="lbl">EDIT PROJECT</span>
+      <input className="field" value={d.name} onChange={(e) => { const v = e.target.value; patch((x) => ({ pd: { ...x.pd!, name: v } })); }} placeholder="Name" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 19px/1 var(--f-text)' }} />
+      <Chips items={tiers()} sel={d.tier} cols={3} onPick={(t) => upd((x) => { x.pd!.tier = t; })} />
+      <span className="cap" style={{ lineHeight: 1.45 }}>DELETING REMOVES THE PROJECT AND ITS STEPS. PURCHASES STAY IN EXPENSES{p?.goal ? ' AND ITS GOAL STAYS IN GOALS' : ''}.</span>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn-fill" onClick={() => upd((x) => R.delProj(x))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Delete</button>
+        <button className={'btn' + (d.name.trim() ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.saveProj(x))}>Save</button>
+      </div>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Weigh-in
+
+function WeighSheet() {
+  const { s, dark, upd, patch } = useLf();
+  const d = s.wd!, w = parseFloat(d.w) || 0;
+  return (
+    <Sheet>
+      <span className="lbl">LOG WEIGH-IN</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
+        <div style={{ position: 'relative' }}>
+          <input className="field" value={d.w} onChange={(e) => { const v = e.target.value.replace(/[^\d.]/g, ''); patch((x) => ({ wd: { ...x.wd!, w: v } })); }} placeholder="0" inputMode="decimal" aria-label="Weight" autoFocus style={{ height: 64, padding: '0 46px 0 16px', font: '800 40px/1 var(--f-disp)' }} />
+          <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', font: '500 11px/1 var(--f-mono)', color: 'var(--ink3)' }}>LB</span>
+        </div>
+        <input className="field" type="date" value={d.date} onChange={(e) => { const v = e.target.value; patch((x) => ({ wd: { ...x.wd!, date: v } })); }} aria-label="Date" style={{ height: 64, padding: '0 12px', fontWeight: 600, colorScheme: dark ? 'dark' : 'light' }} />
+      </div>
+      {s.weighIns.some(([x]) => x === d.date) && <span className="cap">REPLACES THE WEIGH-IN ALREADY LOGGED THAT DAY</span>}
+      <button className={'btn' + (w > 0 ? '' : ' dim')} onClick={() => upd((x) => R.saveWeigh(x))}>{w > 0 ? `Log ${w} lb` : 'Type your weight'}</button>
+    </Sheet>
+  );
+}
+
 export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; x.xd = null; x.ie = null; x.tb = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; x.xd = null; x.ie = null; x.tb = null; x.td = null; x.pd = null; x.wd = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -752,6 +844,9 @@ export function Sheets() {
       {sh === 'exp' && s.xe && <ExpSheet />}
       {sh === 'inc' && s.ie && <IncSheet />}
       {sh === 'take' && <TakeSheet />}
+      {sh === 'task' && s.td && <TaskSheet />}
+      {sh === 'proj' && s.pd && <ProjSheet />}
+      {sh === 'weigh' && s.wd && <WeighSheet />}
     </>
   );
 }

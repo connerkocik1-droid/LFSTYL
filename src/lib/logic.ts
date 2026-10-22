@@ -459,6 +459,79 @@ export const R = {
     s.tb = null; s.sheet = null;
     s.toast = { t: `${usd(total)} moved back to Unassigned` };
   },
+  /** Opens the edit sheet for a task (id) or a project step (pid + group id). */
+  openTask(s: State, kind: 'task' | 'action' | 'buy', id: string, pid?: string) {
+    if (kind === 'task') {
+      const t = s.tasks.find((x) => x.id === id);
+      if (!t) return;
+      s.td = { kind, id, title: t.title, tier: t.tier, due: t.due || '', notes: t.notes || '', est: '', cat: null };
+    } else {
+      const p = s.projects.find((x) => x.id === pid), g = p?.groups.find((x) => x.id === id);
+      if (!p || !g) return;
+      s.td = kind === 'action'
+        ? { kind, id, pid, title: g.action.title, tier: p.tier, due: g.action.due || '', notes: g.action.notes || '', est: '', cat: null }
+        : { kind, id, pid, title: g.buy!.title, tier: p.tier, due: '', notes: '', est: String(g.buy!.est), cat: g.buy!.cat || null };
+    }
+    s.sheet = 'task';
+  },
+  saveTask(s: State) {
+    const d = s.td!, title = d.title.trim(), due = /^\d{4}-\d{2}-\d{2}$/.test(d.due) ? d.due : null;
+    if (!title) return;
+    if (d.kind === 'task') {
+      const t = s.tasks.find((x) => x.id === d.id);
+      if (t) Object.assign(t, { title, tier: d.tier, due, notes: d.notes.trim(), touched: s.today });
+    } else {
+      const g = s.projects.find((x) => x.id === d.pid)?.groups.find((x) => x.id === d.id);
+      if (!g) return;
+      if (d.kind === 'action') Object.assign(g.action, { title, due, notes: d.notes.trim() });
+      else if (g.buy) { const est = parseFloat(d.est); if (!(est >= 0)) return; Object.assign(g.buy, { title, est }); if (d.cat && g.buy.cat !== null) g.buy.cat = d.cat; }
+    }
+    s.td = null; s.sheet = null;
+    s.toast = { t: 'Saved · ' + title };
+  },
+  /** Deletes a task, an action (with its buy step) or just a buy step. A bought buy step must be unmarked first. */
+  delTask(s: State) {
+    const d = s.td!;
+    if (d.kind === 'task') s.tasks = s.tasks.filter((x) => x.id !== d.id);
+    else {
+      const p = s.projects.find((x) => x.id === d.pid), g = p?.groups.find((x) => x.id === d.id);
+      if (!p || !g || (g.buy && g.buy.done)) return;
+      if (d.kind === 'action') p.groups = p.groups.filter((x) => x.id !== d.id); else g.buy = null;
+    }
+    s.td = null; s.sheet = null;
+    s.toast = { t: 'Deleted · ' + d.title };
+  },
+  openProj(s: State, id: string) {
+    const p = s.projects.find((x) => x.id === id);
+    if (!p) return;
+    s.pd = { id, name: p.name, tier: p.tier }; s.sheet = 'proj';
+  },
+  saveProj(s: State) {
+    const d = s.pd!, p = s.projects.find((x) => x.id === d.id), name = d.name.trim();
+    if (!p || !name) return;
+    for (const e of s.expenses) if (e.proj === p.name) e.proj = name;
+    p.name = name; p.tier = d.tier;
+    s.pd = null; s.sheet = null;
+    s.toast = { t: 'Saved · ' + name };
+  },
+  /** Deletes a project. Its purchases stay in Expenses; a linked goal stays in Goals. */
+  delProj(s: State) {
+    const d = s.pd!;
+    s.projects = s.projects.filter((x) => x.id !== d.id);
+    s.pd = null; s.sheet = null;
+    if (s.view && s.view.k === 'project' && s.view.id === d.id) s.view = null;
+    s.toast = { t: 'Deleted project · ' + d.name };
+  },
+  openWeigh(s: State) { const last = s.weighIns[s.weighIns.length - 1]; s.wd = { w: last ? String(last[1]) : '', date: s.today }; s.sheet = 'weigh'; },
+  saveWeigh(s: State) {
+    const d = s.wd!, w = r2(parseFloat(d.w) || 0);
+    if (!(w > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return;
+    s.weighIns = [...s.weighIns.filter(([x]) => x !== d.date), [d.date, w] as [string, number]].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    s.wd = null; s.sheet = null;
+    s.toast = { t: `Logged ${w} lb` };
+  },
+  delWeigh(s: State, date: string) { s.weighIns = s.weighIns.filter(([x]) => x !== date); s.toast = { t: 'Weigh-in removed' }; },
+  setWeightTarget(s: State, v: number) { s.weightTarget = Math.max(0, r2(v)); },
   openCat(s: State, id: string | null) {
     s.cd = id ? { id, name: catName(s, id), amt: String(planCat(s, id) || '') } : { id: null, name: '', amt: '' };
     s.sheet = 'cat';
@@ -558,6 +631,13 @@ export function catchUp(s: State) {
   if (!s.period.extras) s.period.extras = s.period.extra > 0 ? [{ id: 'n0', amt: s.period.extra, src: 'Extra income', date: s.period.start }] : [];
   chargeSubs(s);
   checkPayday(s);
+}
+
+/** What you can spend per day until payday and still end the period at zero. Null without a pay schedule. */
+export function safeToSpend(s: State, left: number) {
+  if (!s.incomes.length) return null;
+  const days = Math.max(1, D.diff(s.incomes[0].next, s.today));
+  return { perDay: Math.max(0, Math.floor((left / days) * 100) / 100), days };
 }
 
 /** When payday arrives, Today shows the paycheck card. */

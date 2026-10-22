@@ -15,6 +15,9 @@ export interface LfCtx {
   /** "Left this paycheck" as currently shown, while it ticks toward the new value. */
   shown: number;
   startDrag: (e: React.PointerEvent, pid: string, i: number) => void;
+  /** The signed-in account's name, when there is one. */
+  account?: string;
+  signOut?: () => void;
 }
 
 export const Ctx = createContext<LfCtx | null>(null);

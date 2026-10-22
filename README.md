@@ -37,8 +37,13 @@ The design is the 1c "Lens + panes" direction: thick glass on the money hero, th
 - **Subscriptions:** Money → Subscriptions. Each one has an amount, how often it repeats (weekly, monthly, yearly), the next charge date and a category. Every charge is logged as an expense on its date, including charges that came due while the app was closed.
 - **Income and bills:** income sources and fixed bills. Changes apply from the next paycheck.
 - **Quick add (+):** expense, income, pouch +1, project and task.
+- **Editing tasks and projects:** tap a task (Tasks or Today) to change its title, due date, tier and notes, or delete it. In a project, tap a step to edit it (a buy step's estimate and category too), and **EDIT** renames the project or deletes it. Deleting an action deletes its buy step; a bought buy step must be unmarked first.
+- **Weight:** Goals → Weight logs weigh-ins (one per day), sets a target and shows the trend.
+- **Safe to spend today:** on Today, what's left this paycheck divided by the days to payday.
+- **Settings:** the ··· button on Today. Track nicotine, shortcut links and sign out.
+- **Shortcuts:** `/?do=expense`, `/?do=pouch`, `/?do=task` and `/?do=income` open straight to that action. They're also manifest shortcuts (long-press the icon on Android); on iPhone, use them with **Open URL** in the Shortcuts app.
 
-Not built yet, matching the design: weight detail, Library document and event detail, the task edit sheet, and the desktop layout. The Library tab shows the design's sample folders and events.
+Not built yet: Library document and event detail, and the desktop layout. The Library tab shows the design's sample folders and events.
 
 ## Accounts and sync
 
