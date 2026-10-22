@@ -1,0 +1,341 @@
+import * as D from './dates';
+import { r2, sum, usd } from './format';
+import { SEED_TODAY, freshUI, seedData } from './seed';
+import type { CatId, Goal, Phase, State, Tier } from './types';
+
+export const CATN: Record<CatId, string> = { groc: 'Groceries', gas: 'Gas', eat: 'Eating out', house: 'Household', fun: 'Fun' };
+export const TIER: Record<Tier, [string, string]> = { P: ['Personal', 'var(--tP)'], F: ['Financial', 'var(--tF)'], W: ['Work', 'var(--tW)'] };
+
+/** Money in the current paycheck period. */
+export function money(s: State) {
+  const p = s.period;
+  const exp = s.expenses.filter((e) => e.per === p.id);
+  const cats = p.cats.map((c) => {
+    const spent = r2(sum(exp.filter((e) => e.cat === c.id), (e) => e.amt));
+    const avail = r2(c.alloc + c.roll);
+    return { id: c.id, name: CATN[c.id], alloc: c.alloc, roll: c.roll, spent, avail, left: r2(avail - spent) };
+  });
+  const billsT = sum(p.bills, (b) => b.a), allocT = sum(cats, (c) => c.alloc), rollT = r2(sum(cats, (c) => c.roll));
+  const spentT = r2(sum(cats, (c) => c.spent)), goalsT = r2(sum(p.goals, (g) => g.a));
+  const unassigned = r2(p.pay + p.extra - billsT - allocT - goalsT);
+  const left = r2(allocT + rollT - spentT + unassigned);
+  const over = cats.filter((c) => c.left < -0.004);
+  const health: 'Over' | 'Tight' | 'Healthy' = left < 0 ? 'Over' : over.length ? 'Tight' : 'Healthy';
+  return { p, exp, cats, billsT, allocT, rollT, spentT, goalsT, unassigned, left, over, health };
+}
+export type Money = ReturnType<typeof money>;
+
+/** Goal progress. Savings goals count contributions; project goals count purchases. */
+export function gi(s: State, g: Goal) {
+  if (g.kind === 'proj') {
+    const used = r2(sum(s.expenses.filter((e) => e.goal === g.id), (e) => e.amt));
+    return { have: used, rem: r2(g.target - used), pct: Math.min(100, (used / g.target) * 100) };
+  }
+  if (g.kind === 'acct') return { have: g.saved, rem: 0, pct: 0 };
+  return { have: g.saved, rem: r2(Math.max(0, g.target - g.saved)), pct: Math.min(100, (g.saved / g.target) * 100) };
+}
+
+/** The next budget period, built from the income and bill settings. */
+export function nextP(s: State) {
+  const src = s.incomes[0];
+  const start = src.next, nxt = D.step(start, src.sched), end = D.add(nxt, -1);
+  const occ = (from: string, k: D.Sched, a: string, b: string) => {
+    const out: string[] = [];
+    let d = from, n = 0;
+    while (d <= b && n < 80) { if (d >= a) out.push(d); d = D.step(d, k); n++; }
+    return out;
+  };
+  const extras = s.incomes.slice(1).flatMap((i) => occ(i.next, i.sched, start, end).map((d) => ({ n: i.name, a: i.amt, d })));
+  const bills = s.billsDef.flatMap((b) => occ(b.due, b.freq, start, end).map((d) => ({ n: b.name, a: b.amt, d }))).sort((x, y) => (x.d < y.d ? -1 : 1));
+  const U = (t: string) => t.toUpperCase(), sameM = start.slice(0, 7) === end.slice(0, 7);
+  return {
+    id: 'p' + start, start, end, nxt, pay: r2(src.amt + sum(extras, (e) => e.a)), srcName: src.name, srcSched: src.sched, extras, bills,
+    label: U(sameM ? D.p(start).getUTCDate() + ' – ' + D.dm(end) : D.dm(start) + ' – ' + D.dm(end)),
+    range: U(D.wdm(start) + ' – ' + D.wdm(end)),
+  };
+}
+
+export function rvUn(s: State) {
+  const n = nextP(s);
+  return r2(n.pay - sum(n.bills, (b) => b.a) - sum(Object.values(s.rv!.cats) as number[]) - sum(Object.values(s.rv!.goals)));
+}
+
+export function phaseInfo(s: State, iso = s.today) {
+  const i = s.phases.findIndex((ph) => iso >= ph.start && iso <= ph.end);
+  const idx = i >= 0 ? i : iso < s.phases[0].start ? 0 : s.phases.length - 1;
+  const ph: Phase = s.phases[idx];
+  return { idx, n: s.phases.length, ph, limit: ph.limit, mg: ph.mg };
+}
+export const limitOn = (s: State, iso: string) => phaseInfo(s, iso).limit;
+export const pouchesToday = (s: State) => s.pouchLog[s.today] || 0;
+
+const relOf = (s: State, due: string | null) => (due ? D.diff(due, s.today) : null);
+export const taskRel = relOf;
+export const idleDays = (s: State, touched: string) => Math.max(0, D.diff(s.today, touched));
+
+const newDraft = () => ({ amt: '', cat: null, note: '', y: false });
+
+/** Every state change. Each mutates a fresh copy of the state. */
+export const R = {
+  key(s: State, k: string) {
+    const tgt = s.sheet === 'price' && s.pr ? s.pr : s.draft;
+    let v = tgt.amt;
+    if (s.sheet === 'price' && s.pr && s.pr.fresh) { v = ''; s.pr.fresh = false; }
+    if (k === 'del') v = v.slice(0, -1);
+    else if (k === '.') { if (!v.includes('.')) v = (v || '0') + '.'; }
+    else {
+      if (/\.\d\d$/.test(v) || v.replace('.', '').length >= 6) { tgt.amt = v; return; }
+      if (v === '0') v = '';
+      v += k;
+    }
+    tgt.amt = v;
+  },
+  logExpense(s: State) {
+    const amt = parseFloat(s.draft.amt), cat = s.draft.cat;
+    if (!(amt > 0) || !cat) return;
+    const id = 'x' + s.seq++;
+    s.expenses.unshift({ id, amt, cat, note: s.draft.note.trim() || CATN[cat], date: s.draft.y ? D.add(s.today, -1) : s.today, per: s.period.id });
+    s.lastCat = cat; s.sheet = null; s.draft = newDraft();
+    s.toast = { t: `Logged ${usd(amt)} · ${CATN[cat]}`, undo: id };
+  },
+  addIncome(s: State) {
+    const amt = parseFloat(s.draft.amt);
+    if (!(amt > 0)) return;
+    s.period.extra = r2(s.period.extra + amt);
+    s.pl = { amt, to: null, src: s.draft.note.trim() || 'Extra income' };
+    s.draft = newDraft(); s.sheet = 'place';
+  },
+  openPlace(s: State, amt: number) { s.pl = { amt, to: null, src: 'Unassigned' }; s.sheet = 'place'; },
+  place(s: State) {
+    if (!s.pl || !s.pl.to) return;
+    const { amt, to } = s.pl;
+    if (to.startsWith('c:')) {
+      const c = s.period.cats.find((x) => x.id === to.slice(2))!;
+      c.alloc = r2(c.alloc + amt);
+      s.toast = { t: `${usd(amt)} added to ${CATN[c.id]}` };
+    } else {
+      const g = s.goals.find((x) => x.id === to.slice(2))!;
+      g.saved = r2(g.saved + amt); g.hist.unshift([s.today, amt, 'Extra contribution']);
+      const pg = s.period.goals.find((x) => x.id === g.id);
+      if (pg) pg.a = r2(pg.a + amt); else s.period.goals.push({ id: g.id, a: amt });
+      s.toast = { t: `${usd(amt)} added to ${g.name}` };
+      if (g.saved >= g.target - 0.004) s.pendingDone = g.id;
+    }
+    s.pl = null; s.sheet = null;
+  },
+  openPrice(s: State, pid: string, gid: string) {
+    const p = s.projects.find((x) => x.id === pid)!, g = p.groups.find((x) => x.id === gid)!;
+    s.pr = { pid, gid, amt: g.buy!.est.toFixed(2), fresh: true, cat: g.buy!.cat || s.lastCat }; s.sheet = 'price';
+  },
+  markBought(s: State) {
+    if (!s.pr) return;
+    const { pid, gid, cat } = s.pr, amt = parseFloat(s.pr.amt);
+    if (!(amt >= 0)) return;
+    const p = s.projects.find((x) => x.id === pid)!, g = p.groups.find((x) => x.id === gid)!;
+    const goal = p.goal ? s.goals.find((x) => x.id === p.goal) || null : null;
+    const buy = g.buy!;
+    buy.done = true; buy.actual = amt;
+    s.expenses.unshift({ id: 'x' + s.seq++, amt, cat: goal ? null : cat, goal: goal ? goal.id : null, note: buy.title, proj: p.name, date: s.today, per: s.period.id, src: 'buy' });
+    if (!goal) { buy.cat = cat; s.lastCat = cat; }
+    s.toast = { t: `Bought · ${usd(amt)} from ${goal ? goal.name : CATN[cat]}` };
+    s.pr = null; s.sheet = null;
+    if (goal && goal.status !== 'done' && gi(s, goal).rem <= 0) s.pendingDone = goal.id;
+  },
+  unbuy(s: State, pid: string, gid: string) {
+    const p = s.projects.find((x) => x.id === pid)!, g = p.groups.find((x) => x.id === gid)!;
+    const i = s.expenses.findIndex((e) => e.src === 'buy' && e.note === g.buy!.title && e.proj === p.name);
+    if (i >= 0) s.expenses.splice(i, 1);
+    g.buy!.done = false; g.buy!.actual = null;
+  },
+  toggleAction(s: State, pid: string, gid: string) {
+    const g = s.projects.find((x) => x.id === pid)!.groups.find((x) => x.id === gid)!;
+    g.action.done = !g.action.done;
+  },
+  toggleTask(s: State, id: string) {
+    const t = s.tasks.find((x) => x.id === id)!;
+    t.done = !t.done; t.touched = s.today;
+    s.toast = t.done ? { t: 'Done · ' + t.title, undoTask: id } : null;
+  },
+  openReview(s: State) {
+    const bc = s.boost.cats || {}, cats: Partial<Record<CatId, number>> = {}, goals: Record<string, number> = {};
+    s.period.cats.forEach((c) => { cats[c.id] = c.alloc + (bc[c.id] || 0); });
+    s.goals.forEach((g) => {
+      if (g.kind === 'save' && g.status !== 'done' && g.per > 0) goals[g.id] = Math.min(g.per, r2(g.target - g.saved));
+      if (g.kind === 'acct' && g.per > 0) goals[g.id] = g.per;
+    });
+    s.rv = { cats, goals }; s.view = { k: 'review' }; s.sheet = null;
+  },
+  rvStep(s: State, kind: 'cats' | 'goals', id: string, d: number) {
+    const o = s.rv![kind] as Record<string, number>;
+    let v = Math.max(0, (o[id] || 0) + d);
+    if (kind === 'goals') { const g = s.goals.find((x) => x.id === id)!; if (g.kind === 'save') v = Math.min(v, r2(g.target - g.saved)); }
+    o[id] = r2(v);
+  },
+  confirmReview(s: State) {
+    const un = rvUn(s);
+    if (un < 0) return;
+    const m = money(s), n = nextP(s), rv = s.rv!;
+    s.history.unshift({ label: s.period.label, pay: s.period.pay + s.period.extra, bills: m.billsT, spent: m.spentT, goals: m.goalsT, left: m.left, cats: m.cats.map((c) => [c.name, c.avail, c.spent]) });
+    const lefts: Partial<Record<CatId, number>> = {};
+    m.cats.forEach((c) => { lefts[c.id] = c.left; });
+    s.period = {
+      id: n.id, label: n.label, start: n.start, end: n.end, pay: n.pay, extra: 0, bills: n.bills.map((b) => ({ n: b.n, a: b.a, d: b.d })),
+      cats: s.period.cats.map((c) => ({ id: c.id, alloc: rv.cats[c.id] || 0, roll: r2(lefts[c.id] || 0) })),
+      goals: Object.keys(rv.goals).filter((id) => rv.goals[id] > 0).map((id) => ({ id, a: rv.goals[id] })),
+    };
+    s.period.goals.forEach((pg) => { const g = s.goals.find((x) => x.id === pg.id); if (g) { g.saved = r2(g.saved + pg.a); g.hist.unshift([n.start, pg.a]); } });
+    s.incomes.forEach((i) => { let k = 0; while (i.next <= n.end && k < 60) { i.next = D.step(i.next, i.sched); k++; } });
+    if (s.today < n.start) s.today = n.start;
+    Object.assign(s, { boost: {}, payPending: false, view: null, tab: 'today', rv: null, moff: 0 });
+    const done = s.goals.find((g) => g.kind === 'save' && g.status !== 'done' && g.saved >= g.target - 0.004);
+    if (done) s.pendingDone = done.id;
+    s.toast = { t: `Paycheck placed · ${usd(un)} unassigned` };
+    checkPayday(s);
+  },
+  openDone(s: State, gid: string | null) { if (!gid) return; s.dn = { gid, stage: 1, to: null }; s.sheet = 'done'; },
+  closeGoal(s: State, gid: string) { s.pendingDone = gid; s.dn = { gid, stage: 1, to: null, manual: true }; s.sheet = 'done'; },
+  doneConfirm(s: State) {
+    if (!s.dn || !s.dn.to) return;
+    const g = s.goals.find((x) => x.id === s.dn!.gid)!, amt = g.per, to = s.dn.to;
+    let label = 'Unassigned';
+    if (to === 'sav') {
+      let a = s.goals.find((x) => x.id === 'savings');
+      if (!a) { a = { id: 'savings', name: 'Savings account', kind: 'acct', target: 0, saved: 0, per: 0, hist: [] }; s.goals.push(a); }
+      a.per += amt; label = a.name;
+    } else if (to.startsWith('g:')) { const t = s.goals.find((x) => x.id === to.slice(2))!; t.per += amt; label = t.name; }
+    else if (to.startsWith('c:')) { const id = to.slice(2) as CatId; s.boost.cats = s.boost.cats || {}; s.boost.cats[id] = (s.boost.cats[id] || 0) + amt; label = CATN[id]; }
+    g.status = 'done'; g.doneOn = s.today; g.doneTo = amt > 0 ? `${usd(amt, 0)} A PAYCHECK → ${label.toUpperCase()}` : 'CLOSED'; g.per = 0;
+    s.pendingDone = null; s.dn = null; s.sheet = null;
+    s.toast = { t: amt > 0 ? `From next paycheck, ${usd(amt, 0)} goes to ${label}` : `${g.name} closed` };
+  },
+  createProject(s: State) {
+    const np = s.np, name = np.name.trim();
+    if (!name) return;
+    const id = 'p' + s.seq++;
+    let goal: string | null = null;
+    if (np.mode === 'goal') { if (!np.goal) return; goal = np.goal; }
+    if (np.mode === 'new') {
+      const t = parseFloat(np.gTarget);
+      if (!np.gName.trim() || !(t > 0)) return;
+      goal = 'g' + s.seq++;
+      s.goals.push({ id: goal, name: np.gName.trim(), kind: 'proj', target: t, saved: 0, per: 0, hist: [] });
+    }
+    s.projects.unshift({ id, name, tier: np.tier, goal, groups: [] });
+    s.view = { k: 'project', id }; s.tab = 'tasks'; s.sheet = null;
+    s.np = { name: '', tier: 'P', mode: 'skip', goal: null, gName: '', gTarget: '' };
+  },
+  openStep(s: State, mode: 'project' | 'task', kind: 'action' | 'buy') {
+    const p = mode === 'project' && s.view && s.view.k === 'project' ? s.projects.find((x) => x.id === (s.view as { id: string }).id) : null;
+    const free = p ? p.groups.filter((g) => !g.buy && !g.action.done) : [];
+    s.st = { mode, kind, title: '', est: '', forA: free.length ? free[free.length - 1].id : null, cat: s.lastCat, due: 'none', tier: 'P' };
+    s.sheet = 'step';
+  },
+  addStep(s: State) {
+    const st = s.st, title = st.title.trim();
+    if (!title) return;
+    const due = dueFromChip(s.today, st.due);
+    if (st.mode === 'task') {
+      s.tasks.unshift({ id: 't' + s.seq++, title, tier: st.tier, due, touched: s.today, done: false });
+      s.toast = { t: 'Task added · ' + title }; s.sheet = null; return;
+    }
+    if (!s.view || s.view.k !== 'project') return;
+    const pid = s.view.id, p = s.projects.find((x) => x.id === pid)!;
+    if (st.kind === 'action') p.groups.push({ id: 'g' + s.seq++, action: { title, due, done: false }, buy: null });
+    else {
+      const est = parseFloat(st.est), g = p.groups.find((x) => x.id === st.forA);
+      if (!g || !(est >= 0)) return;
+      g.buy = { title, est, actual: null, done: false, cat: p.goal ? null : st.cat };
+    }
+    s.sheet = null;
+  },
+  openEd(s: State, kind: 'inc' | 'bill', id: string | null) {
+    if (kind === 'inc') {
+      const i = id ? s.incomes.find((x) => x.id === id) : null;
+      s.ed = { kind, id, name: i ? i.name : '', amt: i ? String(i.amt) : '', sched: i ? i.sched : 'monthly', date: i ? i.next : D.add(s.today, 7) };
+    } else {
+      const b = id ? s.billsDef.find((x) => x.id === id) : null;
+      s.ed = { kind, id, name: b ? b.name : '', amt: b ? String(b.amt) : '', sched: b ? b.freq : 'monthly', date: b ? b.due : D.add(s.today, 14) };
+    }
+    s.sheet = 'ed';
+  },
+  saveEd(s: State) {
+    const e = s.ed!, amt = r2(parseFloat(String(e.amt).replace(/[$,]/g, ''))), name = e.name.trim();
+    if (!name || !(amt > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(e.date || '')) return;
+    if (e.kind === 'inc') {
+      if (e.date < s.today) return;
+      const v = { name, amt, sched: e.sched, next: e.date };
+      if (e.id) Object.assign(s.incomes.find((x) => x.id === e.id)!, v); else s.incomes.push({ id: 'i' + s.seq++, ...v });
+    } else {
+      const v = { name, amt, freq: e.sched, due: e.date };
+      if (e.id) Object.assign(s.billsDef.find((x) => x.id === e.id)!, v); else s.billsDef.push({ id: 'b' + s.seq++, ...v });
+    }
+    s.toast = { t: 'Saved · applies from ' + D.wdm(s.incomes[0].next) }; s.ed = null; s.sheet = null;
+  },
+  delEd(s: State) {
+    const e = s.ed!;
+    if (e.kind === 'inc') { if (s.incomes[0].id === e.id) return; s.incomes = s.incomes.filter((x) => x.id !== e.id); }
+    else s.billsDef = s.billsDef.filter((x) => x.id !== e.id);
+    s.toast = { t: 'Removed ' + e.name }; s.ed = null; s.sheet = null;
+  },
+  pouch(s: State, d: number) { s.pouchLog[s.today] = Math.max(0, (s.pouchLog[s.today] || 0) + d); },
+};
+
+/** Due dates offered by the step sheet's chips. */
+export function dueFromChip(today: string, chip: 'none' | 'tom' | 'week' | 'next'): string | null {
+  if (chip === 'tom') return D.add(today, 1);
+  if (chip === 'week') { const wd = D.p(today).getUTCDay(); return D.add(today, wd < 5 ? 5 - wd : 7 - wd); }
+  if (chip === 'next') return D.add(today, 7);
+  return null;
+}
+
+/** When payday arrives, Today shows the paycheck card. */
+export function checkPayday(s: State) {
+  if (!s.payPending && s.today >= s.incomes[0].next) s.payPending = true;
+}
+
+/** Demo screens, matching the design's flow canvas. "Today" is pinned to the sample data's day. */
+export const DEMOS = ['today', 'tasks', 'money', 'goals', 'library', 'add', 'np', 'np-buy', 'np-drag', 'price-unlinked', 'price-linked', 'bought-proj', 'bought', 'paycheck', 'review', 'money-new', 'goal', 'goal-card', 'done1', 'done2', 'expense', 'expense-done', 'income', 'place', 'over', 'wean', 'setup', 'setup-inc', 'setup-bill'] as const;
+
+export function initial(today: string): State {
+  const s: State = { ...seedData(), ...freshUI(today) };
+  checkPayday(s);
+  return s;
+}
+
+export function buildDemo(start: string): State {
+  const s: State = { ...seedData(), ...freshUI(SEED_TODAY) };
+  const car = () => s.projects.find((p) => p.id === 'car')!;
+  const payday = () => { const n = nextP(s); s.payPending = true; s.today = n.start; };
+  const paid = () => { payday(); R.openReview(s); s.rv!.cats.gas = 130; R.confirmReview(s); s.toast = null; };
+  switch (start) {
+    case 'tasks': case 'money': case 'goals': case 'library': s.tab = start; break;
+    case 'add': s.sheet = 'add'; break;
+    case 'np': s.tab = 'tasks'; s.sheet = 'np'; Object.assign(s.np, { name: 'Fix The Car Up', tier: 'P', mode: 'new', gName: 'Car repairs', gTarget: '600' }); break;
+    case 'np-buy':
+      car().groups = [{ id: 'g1', action: { title: 'Install new battery', due: '2026-10-23', done: false }, buy: null }];
+      s.tab = 'tasks'; s.view = { k: 'project', id: 'car' }; R.openStep(s, 'project', 'buy'); Object.assign(s.st, { title: 'Buy battery', est: '189' }); break;
+    case 'np-drag': car().groups = car().groups.slice(0, 3); s.tab = 'tasks'; s.view = { k: 'project', id: 'car' }; s.drag = { pid: 'car', from: 1, to: 0, dy: -116, h: 124 }; break;
+    case 'price-unlinked': s.tab = 'tasks'; s.view = { k: 'project', id: 'office' }; R.openPrice(s, 'office', 'g5'); s.pr!.amt = '74.99'; s.pr!.fresh = false; break;
+    case 'price-linked': s.tab = 'tasks'; s.view = { k: 'project', id: 'car' }; R.openPrice(s, 'car', 'g1'); break;
+    case 'bought-proj': R.openPrice(s, 'car', 'g1'); s.pr!.amt = '179.95'; R.markBought(s); s.tab = 'tasks'; s.view = { k: 'project', id: 'car' }; break;
+    case 'bought': R.openPrice(s, 'car', 'g1'); s.pr!.amt = '179.95'; R.markBought(s); s.toast = null; s.tab = 'money'; break;
+    case 'paycheck': payday(); break;
+    case 'review': payday(); R.openReview(s); s.rv!.cats.gas = 130; break;
+    case 'money-new': paid(); s.tab = 'money'; break;
+    case 'goal': s.tab = 'goals'; s.view = { k: 'goal', id: 'tires' }; break;
+    case 'goal-card': paid(); break;
+    case 'done1': paid(); R.openDone(s, s.pendingDone); break;
+    case 'done2': paid(); R.openDone(s, s.pendingDone); s.dn!.stage = 2; s.dn!.to = 'g:roth'; break;
+    case 'expense': s.sheet = 'expense'; Object.assign(s.draft, { amt: '12.50', cat: 'eat', note: 'Lunch with Sam' }); break;
+    case 'expense-done': Object.assign(s.draft, { amt: '12.50', cat: 'eat', note: 'Lunch with Sam' }); R.logExpense(s); break;
+    case 'income': s.sheet = 'income'; Object.assign(s.draft, { amt: '200', note: 'Sold old bike' }); break;
+    case 'place': Object.assign(s.draft, { amt: '200', note: 'Sold old bike' }); R.addIncome(s); s.pl!.to = 'g:japan'; break;
+    case 'over': s.pouchLog[s.today] = 7; break;
+    case 'wean': s.tab = 'goals'; s.view = { k: 'wean' }; break;
+    case 'setup': s.tab = 'money'; s.view = { k: 'setup' }; break;
+    case 'setup-inc': s.tab = 'money'; s.view = { k: 'setup' }; R.openEd(s, 'inc', 'i1'); s.ed!.amt = '1920'; break;
+    case 'setup-bill': s.tab = 'money'; s.view = { k: 'setup' }; R.openEd(s, 'bill', null); Object.assign(s.ed!, { name: 'Car registration', amt: '148', sched: 'yearly', date: '2026-11-12' }); break;
+    default: break;
+  }
+  return s;
+}
