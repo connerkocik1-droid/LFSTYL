@@ -151,8 +151,10 @@ export const R = {
   addIncome(s: State) {
     const amt = parseFloat(s.draft.amt);
     if (!(amt > 0)) return;
-    s.period.extra = r2(s.period.extra + amt);
-    s.pl = { amt, split: {}, src: s.draft.note.trim() || 'Extra income' };
+    const src = s.draft.note.trim() || 'Extra income';
+    s.period.extras = [...(s.period.extras || []), { id: 'n' + s.seq++, amt, src, date: s.today }];
+    s.period.extra = r2(sum(s.period.extras, (e) => e.amt));
+    s.pl = { amt, split: {}, src };
     s.draft = newDraft(); s.sheet = 'place';
   },
   openPlace(s: State, amt: number) { s.pl = { amt, split: {}, src: 'Unassigned' }; s.sheet = 'place'; },
@@ -237,7 +239,7 @@ export const R = {
     const lefts: Partial<Record<CatId, number>> = {};
     m.cats.forEach((c) => { lefts[c.id] = c.left; });
     s.period = {
-      id: n.id, label: n.label, start: n.start, end: n.end, pay: n.pay, extra: 0, bills: n.bills.map((b) => ({ n: b.n, a: b.a, d: b.d })),
+      id: n.id, label: n.label, start: n.start, end: n.end, pay: n.pay, extra: 0, extras: [], bills: n.bills.map((b) => ({ n: b.n, a: b.a, d: b.d })),
       cats: s.period.cats.map((c) => ({ id: c.id, alloc: rv.cats[c.id] || 0, roll: r2(lefts[c.id] || 0) })),
       goals: Object.keys(rv.goals).filter((id) => rv.goals[id] > 0).map((id) => ({ id, a: rv.goals[id] })),
     };
@@ -397,8 +399,65 @@ export const R = {
       for (const p of s.projects) for (const g of p.groups) if (g.buy && g.buy.done && g.buy.title === e.note && p.name === e.proj) { g.buy.done = false; g.buy.actual = null; }
     }
     s.expenses = s.expenses.filter((x) => x.id !== id);
-    s.xe = null; s.sheet = null;
+    s.xe = null; s.xd = null; s.sheet = null;
     s.toast = { t: `Deleted ${e.note} · ${usd(e.amt)}` };
+  },
+  openExp(s: State, id: string) {
+    const e = s.expenses.find((x) => x.id === id);
+    if (!e) return;
+    s.xe = id; s.xd = { id, amt: String(e.amt), note: e.note, date: e.date, cat: e.cat };
+    s.sheet = 'exp';
+  },
+  saveExpense(s: State) {
+    const d = s.xd!, e = s.expenses.find((x) => x.id === d.id), amt = r2(parseFloat(d.amt) || 0);
+    if (!e || !(amt > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return;
+    if (e.src === 'buy') for (const p of s.projects) for (const g of p.groups) if (g.buy && g.buy.done && g.buy.title === e.note && p.name === e.proj) g.buy.actual = amt;
+    e.amt = amt; e.date = d.date; if (e.src !== 'buy') e.note = d.note.trim() || e.note; if (e.cat && d.cat) e.cat = d.cat;
+    s.xe = null; s.xd = null; s.sheet = null;
+    s.toast = { t: `Saved ${e.note} · ${usd(amt)}` };
+  },
+  openIncomeEntry(s: State, id: string) {
+    const e = (s.period.extras || []).find((x) => x.id === id);
+    if (!e) return;
+    s.ie = { id, amt: String(e.amt), src: e.src }; s.sheet = 'inc';
+  },
+  /** Changes or removes (amount 0) an extra income entry. Refused if it would leave Unassigned negative. */
+  saveIncomeEntry(s: State, remove = false) {
+    const d = s.ie!, list = s.period.extras || [], e = list.find((x) => x.id === d.id);
+    if (!e) return;
+    const amt = remove ? 0 : r2(parseFloat(d.amt) || 0);
+    if (amt < 0 || money(s).unassigned + (amt - e.amt) < -0.004) return;
+    if (amt === 0) s.period.extras = list.filter((x) => x.id !== e.id); else { e.amt = amt; e.src = d.src.trim() || e.src; }
+    s.period.extra = r2(sum(s.period.extras || [], (x) => x.amt));
+    s.ie = null; s.sheet = null;
+    s.toast = { t: amt === 0 ? `Removed ${e.src}` : `Saved ${e.src} · ${usd(amt)}` };
+  },
+  /** Moves money placed in categories or goals this period back to Unassigned. */
+  takeBack(s: State) {
+    const parts = Object.entries(s.tb || {}).map(([to, v]) => [to, r2(parseFloat(v) || 0)] as const).filter(([, a]) => a > 0);
+    if (!parts.length) return;
+    let total = 0;
+    for (const [to, amt] of parts) {
+      if (to.startsWith('c:')) {
+        const c = s.period.cats.find((x) => x.id === to.slice(2));
+        if (!c || amt > c.alloc + 0.004) return;
+      } else {
+        const pg = s.period.goals.find((x) => x.id === to.slice(2));
+        if (!pg || amt > pg.a + 0.004) return;
+      }
+    }
+    for (const [to, amt] of parts) {
+      if (to.startsWith('c:')) { const c = s.period.cats.find((x) => x.id === to.slice(2))!; c.alloc = r2(c.alloc - amt); }
+      else {
+        const pg = s.period.goals.find((x) => x.id === to.slice(2))!, g = s.goals.find((x) => x.id === pg.id);
+        pg.a = r2(pg.a - amt);
+        if (g) { g.saved = r2(g.saved - amt); g.hist.unshift([s.today, -amt, 'Moved back to Unassigned']); }
+      }
+      total = r2(total + amt);
+    }
+    s.period.goals = s.period.goals.filter((x) => x.a > 0.004);
+    s.tb = null; s.sheet = null;
+    s.toast = { t: `${usd(total)} moved back to Unassigned` };
   },
   openCat(s: State, id: string | null) {
     s.cd = id ? { id, name: catName(s, id), amt: String(planCat(s, id) || '') } : { id: null, name: '', amt: '' };
@@ -495,6 +554,8 @@ export function chargeSubs(s: State) {
 
 /** Everything that happens when a new day starts: subscription charges, then payday. */
 export function catchUp(s: State) {
+  // Saves from before income entries were editable keep one combined entry.
+  if (!s.period.extras) s.period.extras = s.period.extra > 0 ? [{ id: 'n0', amt: s.period.extra, src: 'Extra income', date: s.period.start }] : [];
   chargeSubs(s);
   checkPayday(s);
 }
