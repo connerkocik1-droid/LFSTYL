@@ -112,7 +112,7 @@ export type View =
   | { k: 'setup'; from?: View | null }
   | { k: 'subs'; from?: View | null }
   | { k: 'plan'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat';
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -150,6 +150,8 @@ export interface UI {
   sb: SubDraft | null;
   gd: GoalDraft | null;
   cd: CatDraft | null;
+  /** The expense open for deleting. */
+  xe: string | null;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;
