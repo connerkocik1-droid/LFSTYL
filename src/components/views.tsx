@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import * as D from '@/lib/dates';
 import { r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, catName, freedPer, gi, goalPer, nextP, paychecksLeft, phaseInfo, planCat, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
-import type { View } from '@/lib/types';
-import { BillList, Pips, PouchNum, scrollProps, useDays14 } from './tabs';
+import { CATN, R, TIER, catName, expiryState, freedPer, gi, goalPer, nextP, paychecksLeft, phaseInfo, planCat, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
+import type { Folder, View } from '@/lib/types';
+import { b64ToBlob, kb, prepareFile } from '@/lib/files';
+import { BillList, DocRow, Pips, PouchNum, scrollProps, useDays14 } from './tabs';
 import { Check, Hero, Lens, Sec, Switch, useLf } from './ui';
 
 const U = (t: string) => t.toUpperCase();
@@ -13,7 +14,7 @@ const U = (t: string) => t.toUpperCase();
 function Back() {
   const { s, upd } = useLf();
   const from = s.view && s.view.from;
-  const label = '← ' + (from ? ({ goal: 'GOAL', project: 'PROJECT', review: 'REVIEW' } as Record<string, string>)[from.k] || 'BACK' : U(s.tab));
+  const label = '← ' + (from ? (from.k === 'folder' ? U(from.name) : ({ goal: 'GOAL', project: 'PROJECT', review: 'REVIEW', doc: 'DOCUMENT', settings: 'SETTINGS' } as Record<string, string>)[from.k] || 'BACK') : U(s.tab));
   return <button className="back" onClick={() => upd((x) => { x.view = x.view && x.view.from ? x.view.from : null; x.drag = null; })}>{label}</button>;
 }
 
@@ -551,6 +552,113 @@ export function SettingsView() {
       </div>
       {signOut && (
         <button className="btn-fill" onClick={signOut} style={{ width: 'calc(100% - 28px)', margin: '22px 14px 0', height: 52, borderRadius: 16, font: '600 15px/1 var(--f-text)' }}>Sign out</button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Library: folder and document
+
+export function FolderView({ name }: { name: Folder }) {
+  const { s, upd } = useLf();
+  const docs = (s.docs || []).filter((d) => d.folder === name);
+  return (
+    <div className="screen push" {...scrollProps}>
+      <Back />
+      <div className="v-head"><div className="t">{name}</div><div className="cap8" style={{ marginTop: 10 }}>{docs.length} {docs.length === 1 ? 'DOCUMENT' : 'DOCUMENTS'}{name === 'Logins' ? ' · LOCKED WITH YOUR PIN' : ''}</div></div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 10px', margin: '-6px 0 4px' }}>
+        <button onClick={() => upd((x) => R.openDoc(x, null, name))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ ADD DOCUMENT</button>
+      </div>
+      <div className="pane list">
+        {docs.map((d, i) => <DocRow key={d.id} d={d} first={i === 0} />)}
+        {!docs.length && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>Nothing here yet. Tap + ADD DOCUMENT, then add photos or PDFs to it.</div>}
+      </div>
+    </div>
+  );
+}
+
+export function DocView({ id }: { id: string }) {
+  const { s, upd, files } = useLf();
+  const d = (s.docs || []).find((x) => x.id === id);
+  const [busy, setBusy] = useState(0);
+  const [err, setErr] = useState('');
+  const [open, setOpen] = useState<{ url: string; mime: string; name: string } | null>(null);
+  useEffect(() => () => { if (open) URL.revokeObjectURL(open.url); }, [open]);
+  if (!d) return null;
+  const st = expiryState(s, d.expires);
+
+  const add = async (list: FileList | null) => {
+    if (!list || !files) return;
+    setErr('');
+    for (const f of Array.from(list)) {
+      setBusy((n) => n + 1);
+      try {
+        const p = await prepareFile(f), fid = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const r = await files.put(fid, p.mime, p.body);
+        if (!r.ok) throw new Error(r.error || "Couldn't upload " + f.name);
+        upd((x) => R.addDocFile(x, d.id, { id: fid, name: f.name, mime: p.mime, size: p.size, thumb: p.thumb, added: x.today }));
+      } catch (e) { setErr((e as Error).message || "Couldn't add " + f.name); }
+      setBusy((n) => n - 1);
+    }
+  };
+  const view = async (fid: string, name: string) => {
+    if (!files) return;
+    setErr('');
+    const r = await files.get(fid);
+    if (!r.ok || !r.body) { setErr(r.error || "Couldn't open the file."); return; }
+    setOpen({ url: URL.createObjectURL(b64ToBlob(r.body, r.mime!)), mime: r.mime!, name });
+  };
+  const remove = (fid: string) => { upd((x) => R.removeDocFile(x, d.id, fid)); files?.remove(fid); };
+  const del = () => { const ids = d.files.map((f) => f.id); upd((x) => R.delDoc(x, d.id)); ids.forEach((fid) => files?.remove(fid)); };
+
+  return (
+    <div className="screen push" {...scrollProps}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 10 }}>
+        <Back />
+        <button onClick={() => upd((x) => R.openDoc(x, d.id))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>EDIT</button>
+      </div>
+      <div className="v-head">
+        <div className="t">{d.title}</div>
+        <div className="cap8" style={{ marginTop: 10 }}>{U(d.folder)} · ADDED {U(D.dm(d.added))}</div>
+      </div>
+      {d.expires && (
+        <div className="pane mx" style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span className="lbl">{st === 'expired' ? 'EXPIRED' : 'EXPIRES'}</span>
+          <span style={{ font: '600 15px/1 var(--f-text)', color: st === 'expired' ? 'var(--crit)' : st === 'soon' ? 'var(--warn)' : undefined }}>{D.wdm(d.expires)} {st !== 'expired' && <span className="cap">· IN {D.diff(d.expires, s.today)}D</span>}</span>
+        </div>
+      )}
+      {d.notes && <div className="pane mx" style={{ marginTop: 12, padding: '14px 18px', fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', WebkitUserSelect: 'text', userSelect: 'text' }}>{d.notes}</div>}
+      <Sec l="FILES" r={d.files.length} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: '0 14px' }}>
+        {d.files.map((f) => (
+          <div key={f.id} style={{ position: 'relative' }}>
+            <button onClick={() => view(f.id, f.name)} aria-label={`Open ${f.name}`} style={{ width: '100%', aspectRatio: '3 / 4', borderRadius: 14, border: 0, padding: 0, cursor: 'pointer', background: f.thumb ? `center / cover no-repeat url(${f.thumb})` : 'repeating-linear-gradient(135deg, var(--fill2) 0 4px, transparent 4px 8px)', boxShadow: 'inset 0 0 0 1px var(--line)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 8, color: 'var(--ink3)', font: '600 9px/1 var(--f-mono)' }}>{f.thumb ? '' : f.mime.includes('pdf') ? 'PDF' : 'FILE'}</button>
+            <button onClick={() => remove(f.id)} aria-label={`Remove ${f.name}`} style={{ position: 'absolute', top: 4, right: 4, width: 28, height: 28, borderRadius: '50%', border: 0, background: 'var(--scrim)', color: '#fff', font: '500 14px/1 var(--f-mono)', cursor: 'pointer' }}>×</button>
+            <div className="cap" style={{ marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{kb(f.size)}</div>
+          </div>
+        ))}
+        <label style={{ aspectRatio: '3 / 4', borderRadius: 14, background: 'var(--fill)', boxShadow: 'inset 0 0 0 1px var(--line)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: files ? 'pointer' : 'not-allowed', opacity: files ? 1 : 0.4, color: 'var(--ink)' }}>
+          <span style={{ font: '500 26px/1 var(--f-mono)' }}>{busy ? '…' : '+'}</span>
+          <span className="cap" style={{ textAlign: 'center' }}>{busy ? 'UPLOADING' : 'PHOTO OR PDF'}</span>
+          <input type="file" accept="image/*,application/pdf" multiple disabled={!files || !!busy} onChange={(e) => { add(e.target.files); e.target.value = ''; }} style={{ display: 'none' }} />
+        </label>
+      </div>
+      {!files && <div className="cap" style={{ padding: '10px 22px 0' }}>FILES NEED AN ACCOUNT WITH SYNC TURNED ON</div>}
+      {err && <div style={{ padding: '10px 22px 0', fontSize: 13, fontWeight: 600, color: 'var(--crit)' }}>{err}</div>}
+      <button className="btn-fill" onClick={del} style={{ width: 'calc(100% - 28px)', margin: '22px 14px 0', height: 50, borderRadius: 16, font: '600 14px/1 var(--f-text)' }}>Delete document</button>
+      {open && (
+        <div role="dialog" aria-label={open.name} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.92)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'calc(var(--top) + 4px) 10px 8px 18px', color: '#fff' }}>
+            <span style={{ font: '500 11px/1.3 var(--f-mono)', letterSpacing: '.06em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{U(open.name)}</span>
+            <span style={{ display: 'flex', gap: 4 }}>
+              <a href={open.url} download={open.name} target="_blank" rel="noreferrer" style={{ height: 44, padding: '0 12px', display: 'grid', placeItems: 'center', color: '#fff', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', textDecoration: 'none' }}>OPEN</a>
+              <button onClick={() => setOpen(null)} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: '#fff', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>CLOSE</button>
+            </span>
+          </div>
+          {open.mime.startsWith('image/')
+            ? <img src={open.url} alt={open.name} style={{ flex: 1, minHeight: 0, objectFit: 'contain', width: '100%' }} />
+            : <iframe src={open.url} title={open.name} style={{ flex: 1, border: 0, background: '#fff' }} />}
+        </div>
       )}
     </div>
   );

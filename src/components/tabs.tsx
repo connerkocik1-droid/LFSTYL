@@ -2,8 +2,8 @@
 
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, catName, freedPer, safeToSpend, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
-import type { State } from '@/lib/types';
+import { CATN, FOLDERS, R, TIER, catName, expiryState, freedPer, safeToSpend, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
+import type { Doc, State } from '@/lib/types';
 import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
 const U = (t: string) => t.toUpperCase();
@@ -489,18 +489,8 @@ export function Goals() {
 
 // ---------------------------------------------------------------- Library
 
-// The brief's fixed folders. Adding files isn't built yet, so they start empty.
-const FOLDERS: { name: string; lines: { t: string; tone?: 'warn' | 'lock' }[] }[] = [
-  { name: 'Insurance', lines: [{ t: 'NO FILES' }] },
-  { name: 'Car', lines: [{ t: 'NO FILES' }] },
-  { name: 'Medical', lines: [{ t: 'NO FILES' }] },
-  { name: 'IDs', lines: [{ t: 'NO FILES' }] },
-  { name: 'Logins', lines: [{ t: 'LOCKED · FACE ID', tone: 'lock' }] },
-  { name: 'Other', lines: [{ t: 'NO FILES' }] },
-];
-
 export function Library() {
-  const { s, upd } = useLf();
+  const { s, upd, files } = useLf();
   return (
     <div className="screen" {...scrollProps}>
       <div className="h-tab" style={{ paddingRight: 18 }}>
@@ -513,21 +503,53 @@ export function Library() {
       {s.lib === 'docs' ? (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '0 14px' }}>
-            {FOLDERS.map((f) => (
-              <div key={f.name} className="pane" style={{ minHeight: 104, padding: '14px 14px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 10 }}>
-                <span className="disp up" style={{ fontSize: 26, lineHeight: 0.9 }}>{f.name}</span>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {f.lines.map((l) => l.tone === 'lock'
-                    ? <span key={l.t} style={{ display: 'flex', alignItems: 'center', gap: 7, font: '600 9.5px/1 var(--f-mono)', letterSpacing: '.06em' }}><span style={{ width: 9, height: 7, borderRadius: 2, background: 'var(--ink)', boxShadow: '0 -4px 0 -1px var(--ink3)' }} />{l.t}</span>
-                    : <span key={l.t} className="cap" style={l.tone === 'warn' ? { fontWeight: 600, color: 'var(--warn)' } : undefined}>{l.t}</span>)}
-                </span>
-              </div>
-            ))}
+            {FOLDERS.map((f) => {
+              const docs = (s.docs || []).filter((d) => d.folder === f);
+              const urgent = docs.filter((d) => ['expired', 'soon'].includes(expiryState(s, d.expires))).sort((x, y) => (x.expires! < y.expires! ? -1 : 1))[0];
+              const st = urgent ? expiryState(s, urgent.expires) : 'none';
+              const lock = f === 'Logins';
+              return (
+                <button key={f} className="pane" onClick={() => upd((x) => { if (lock && files && !x.unlocked) { x.sheet = 'pin'; return; } x.view = { k: 'folder', name: f }; })} style={{ minHeight: 104, padding: '14px 14px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'stretch', gap: 10, border: 0, color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+                  <span className="disp up" style={{ fontSize: 26, lineHeight: 0.9 }}>{f}</span>
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {lock && files
+                      ? <span style={{ display: 'flex', alignItems: 'center', gap: 7, font: '600 9.5px/1 var(--f-mono)', letterSpacing: '.06em' }}><span style={{ width: 9, height: 7, borderRadius: 2, background: 'var(--ink)', boxShadow: '0 -4px 0 -1px var(--ink3)' }} />{s.unlocked ? 'UNLOCKED' : 'LOCKED · PIN'}{docs.length ? ` · ${docs.length}` : ''}</span>
+                      : <span className="cap">{docs.length ? `${docs.length} ${docs.length === 1 ? 'DOCUMENT' : 'DOCUMENTS'}` : 'EMPTY'}</span>}
+                    {urgent && <span className="cap" style={{ fontWeight: 600, color: st === 'expired' ? 'var(--crit)' : 'var(--warn)' }}>{U(urgent.title)} {st === 'expired' ? 'EXPIRED' : 'EXPIRES ' + U(D.dm(urgent.expires!))}</span>}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+          {(s.docs || []).filter((d) => d.folder !== 'Logins').length > 0 && (
+            <>
+              <div className="lbl" style={{ padding: '0 22px', margin: '24px 0 10px' }}>RECENT</div>
+              <div className="pane list">
+                {(s.docs || []).filter((d) => d.folder !== 'Logins').slice(0, 4).map((d, i) => <DocRow key={d.id} d={d} first={i === 0} />)}
+              </div>
+            </>
+          )}
         </>
       ) : (
         <div className="pane mx" style={{ padding: '20px 18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No events yet. A trip or occasion will bundle its checklist, budget, bookings and documents here.</div>
       )}
     </div>
+  );
+}
+
+/** A document in a list: a preview (photo) or file-type tile, the title and what's in it. */
+export function DocRow({ d, first }: { d: Doc; first: boolean }) {
+  const { s, upd } = useLf();
+  const f = d.files[0], st = expiryState(s, d.expires);
+  const meta = [d.folder.toUpperCase(), d.files.length ? `${d.files.length} ${d.files.length === 1 ? 'FILE' : 'FILES'}` : 'NO FILES', d.expires ? (st === 'expired' ? 'EXPIRED ' : 'EXPIRES ') + U(D.dm(d.expires)) : 'ADDED ' + U(D.dm(d.added))].join(' · ');
+  return (
+    <button onClick={() => upd((x) => { x.view = { k: 'doc', id: d.id, from: x.view }; })} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '12px 16px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+      {!first && <div className="sep" style={{ left: 70 }} />}
+      <div style={{ width: 40, height: 50, flex: 'none', borderRadius: 6, overflow: 'hidden', background: f?.thumb ? `center / cover no-repeat url(${f.thumb})` : 'repeating-linear-gradient(135deg, var(--fill2) 0 4px, transparent 4px 8px)', boxShadow: 'inset 0 0 0 1px var(--line)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5, font: '600 8px/1 var(--f-mono)', color: 'var(--ink3)' }}>{f?.thumb ? '' : f ? (f.mime.includes('pdf') ? 'PDF' : 'FILE') : 'DOC'}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 500 }}>{d.title}</span>
+        <span className="cap" style={{ color: st === 'expired' ? 'var(--crit)' : st === 'soon' ? 'var(--warn)' : undefined, fontWeight: st === 'expired' || st === 'soon' ? 600 : 500 }}>{meta}</span>
+      </div>
+    </button>
   );
 }

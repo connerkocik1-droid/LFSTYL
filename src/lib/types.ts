@@ -27,6 +27,11 @@ export interface BillDef { id: string; name: string; amt: number; freq: Sched; d
 /** A recurring expense. Each charge is logged as an expense on its date. */
 export interface Sub { id: string; name: string; amt: number; freq: 'weekly' | 'monthly' | 'yearly'; next: string; cat: CatId }
 
+export type Folder = 'Insurance' | 'Car' | 'Medical' | 'IDs' | 'Logins' | 'Other';
+/** A stored file. Its contents live on the server (lfstyl_files); a small preview is kept here for photos. */
+export interface DocFile { id: string; name: string; mime: string; size: number; thumb?: string; added: string }
+export interface Doc { id: string; title: string; folder: Folder; notes: string; expires: string | null; files: DocFile[]; added: string }
+
 export interface PastPeriod {
   label: string;
   pay: number;
@@ -88,6 +93,8 @@ export interface Data {
   plan?: { cats: Partial<Record<CatId, number>> };
   /** Names for categories you added or renamed. */
   catNames?: Record<CatId, string>;
+  /** Library documents (missing in older saves). */
+  docs?: Doc[];
   history: PastPeriod[];
   expenses: Expense[];
   goals: Goal[];
@@ -116,8 +123,10 @@ export type View =
   | { k: 'subs'; from?: View | null }
   | { k: 'plan'; from?: View | null }
   | { k: 'weight'; from?: View | null }
-  | { k: 'settings'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp' | 'inc' | 'take' | 'task' | 'proj' | 'weigh';
+  | { k: 'settings'; from?: View | null }
+  | { k: 'folder'; name: Folder; from?: View | null }
+  | { k: 'doc'; id: string; from?: View | null };
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp' | 'inc' | 'take' | 'task' | 'proj' | 'weigh' | 'doc' | 'pin';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -137,6 +146,7 @@ export interface CatDraft { id: string | null; name: string; amt: string }
 /** Editing a task, a project action or a project buy step. */
 export interface TaskDraft { kind: 'task' | 'action' | 'buy'; id: string; pid?: string; title: string; tier: Tier; due: string; notes: string; est: string; cat: CatId | null }
 export interface ProjDraft { id: string; name: string; tier: Tier }
+export interface DocDraft { id: string | null; title: string; folder: Folder; notes: string; expires: string }
 export interface Drag { pid: string; from: number; to: number; dy: number; h: number }
 
 /** Screen state that is not saved. */
@@ -170,6 +180,9 @@ export interface UI {
   pd: ProjDraft | null;
   /** Weigh-in being entered: weight and date. */
   wd: { w: string; date: string } | null;
+  dd: DocDraft | null;
+  /** The Logins folder was unlocked with the PIN in this visit. */
+  unlocked: boolean;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;

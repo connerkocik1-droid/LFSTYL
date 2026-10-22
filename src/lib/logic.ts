@@ -1,7 +1,7 @@
 import * as D from './dates';
 import { r2, sum, usd } from './format';
 import { SEED_TODAY, emptyData, freshUI, seedData } from './seed';
-import type { CatId, Goal, Phase, State, Sub, Tier } from './types';
+import type { CatId, DocFile, Folder, Goal, Phase, State, Sub, Tier } from './types';
 
 const MONTH = (iso: string) => iso.slice(0, 7);
 /** "13 – 26 OCT" or "28 OCT – 10 NOV" */
@@ -532,6 +532,33 @@ export const R = {
   },
   delWeigh(s: State, date: string) { s.weighIns = s.weighIns.filter(([x]) => x !== date); s.toast = { t: 'Weigh-in removed' }; },
   setWeightTarget(s: State, v: number) { s.weightTarget = Math.max(0, r2(v)); },
+  openDoc(s: State, id: string | null, folder: Folder = 'Other') {
+    const d = id ? (s.docs || []).find((x) => x.id === id) : null;
+    s.dd = d ? { id, title: d.title, folder: d.folder, notes: d.notes, expires: d.expires || '' } : { id: null, title: '', folder, notes: '', expires: '' };
+    s.sheet = 'doc';
+  },
+  saveDoc(s: State) {
+    const e = s.dd!, title = e.title.trim(), expires = /^\d{4}-\d{2}-\d{2}$/.test(e.expires) ? e.expires : null;
+    if (!title) return;
+    s.docs = s.docs || [];
+    if (e.id) Object.assign(s.docs.find((x) => x.id === e.id)!, { title, folder: e.folder, notes: e.notes.trim(), expires });
+    else {
+      const id = 'd' + s.seq++;
+      s.docs.unshift({ id, title, folder: e.folder, notes: e.notes.trim(), expires, files: [], added: s.today });
+      s.view = { k: 'doc', id, from: s.view };
+    }
+    s.dd = null; s.sheet = null;
+    s.toast = { t: 'Saved · ' + title };
+  },
+  addDocFile(s: State, docId: string, f: DocFile) { const d = (s.docs || []).find((x) => x.id === docId); if (d) d.files.push(f); },
+  removeDocFile(s: State, docId: string, fileId: string) { const d = (s.docs || []).find((x) => x.id === docId); if (d) d.files = d.files.filter((x) => x.id !== fileId); },
+  /** Removes a document from the list; the caller removes its files from the server. */
+  delDoc(s: State, id: string) {
+    const d = (s.docs || []).find((x) => x.id === id);
+    s.docs = (s.docs || []).filter((x) => x.id !== id);
+    if (s.view && s.view.k === 'doc' && s.view.id === id) s.view = s.view.from || null;
+    s.toast = { t: 'Deleted · ' + (d ? d.title : 'document') };
+  },
   openCat(s: State, id: string | null) {
     s.cd = id ? { id, name: catName(s, id), amt: String(planCat(s, id) || '') } : { id: null, name: '', amt: '' };
     s.sheet = 'cat';
@@ -631,6 +658,15 @@ export function catchUp(s: State) {
   if (!s.period.extras) s.period.extras = s.period.extra > 0 ? [{ id: 'n0', amt: s.period.extra, src: 'Extra income', date: s.period.start }] : [];
   chargeSubs(s);
   checkPayday(s);
+}
+
+export const FOLDERS: Folder[] = ['Insurance', 'Car', 'Medical', 'IDs', 'Logins', 'Other'];
+
+/** How a document's expiry reads: none, ok, soon (within 60 days) or expired. */
+export function expiryState(s: State, expires: string | null) {
+  if (!expires) return 'none' as const;
+  const d = D.diff(expires, s.today);
+  return d < 0 ? 'expired' as const : d <= 60 ? 'soon' as const : 'ok' as const;
 }
 
 /** What you can spend per day until payday and still end the period at zero. Null without a pay schedule. */

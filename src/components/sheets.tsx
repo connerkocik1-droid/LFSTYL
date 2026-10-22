@@ -1,10 +1,10 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import * as D from '@/lib/dates';
 import { r2, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, catName, freedPer, gi, goalPer, nicotineOn, paydays, paychecksLeft, phaseInfo, pouchesToday, subStep } from '@/lib/logic';
-import type { CatId, State, Tier } from '@/lib/types';
+import { CATN, FOLDERS, R, TIER, catName, freedPer, gi, goalPer, nicotineOn, paydays, paychecksLeft, phaseInfo, pouchesToday, subStep } from '@/lib/logic';
+import type { CatId, Folder, State, Tier } from '@/lib/types';
 import { Keypad, useLf } from './ui';
 
 const U = (t: string) => t.toUpperCase();
@@ -820,11 +820,70 @@ function WeighSheet() {
   );
 }
 
+// ---------------------------------------------------------------- Library document
+
+function DocSheet() {
+  const { s, dark, upd, patch } = useLf();
+  const e = s.dd!;
+  const set = (k: 'title' | 'notes' | 'expires') => (ev: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const v = ev.target.value; patch((x) => ({ dd: { ...x.dd!, [k]: v } })); };
+  return (
+    <Sheet>
+      <span className="lbl">{e.id ? 'EDIT DOCUMENT' : 'NEW DOCUMENT'}</span>
+      <input className="field" value={e.title} onChange={set('title')} placeholder="Title, e.g. Auto insurance card" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 18px/1 var(--f-text)' }} />
+      <span className="lbl">FOLDER</span>
+      <Chips items={FOLDERS.map((f) => [f, f] as [Folder, string])} sel={e.folder} cols={3} onPick={(f) => upd((x) => { x.dd!.folder = f; })} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span className="lbl" style={{ flex: 1 }}>EXPIRES</span>
+        {e.expires && <button onClick={() => upd((x) => { x.dd!.expires = ''; })} style={{ height: 44, padding: '0 10px', border: 0, background: 'none', color: 'var(--ink2)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.08em', cursor: 'pointer' }}>CLEAR</button>}
+        <input className="field" type="date" value={e.expires} onChange={set('expires')} aria-label="Expires" style={{ width: 170, height: 48, padding: '0 12px', fontWeight: 600, colorScheme: dark ? 'dark' : 'light' }} />
+      </div>
+      <textarea className="field" value={e.notes} onChange={set('notes')} placeholder="Notes, e.g. policy number" rows={3} style={{ height: 'auto', padding: '12px 14px', lineHeight: 1.4, resize: 'none' }} />
+      <button className={'btn' + (e.title.trim() ? '' : ' dim')} onClick={() => upd((x) => R.saveDoc(x))}>{e.id ? 'Save' : 'Create, then add files'}</button>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- PIN for the Logins folder
+
+function PinSheet() {
+  const { upd, files } = useLf();
+  const [pin, setPin] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const press = async (k: string) => {
+    if (busy) return;
+    if (k === 'del') { setPin((v) => v.slice(0, -1)); return; }
+    if (!k || pin.length >= 4) return;
+    const next = pin + k;
+    setPin(next); setErr('');
+    if (next.length < 4) return;
+    setBusy(true);
+    const ok = files ? await files.checkPin(next) : true;
+    setBusy(false);
+    if (ok) upd((x) => { x.unlocked = true; x.sheet = null; x.view = { k: 'folder', name: 'Logins' }; });
+    else { setErr('Wrong PIN.'); setPin(''); }
+  };
+  return (
+    <Sheet>
+      <span className="lbl">LOGINS · ENTER YOUR PIN</span>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 14, padding: '8px 0' }}>
+        {[0, 1, 2, 3].map((i) => <span key={i} style={{ width: 16, height: 16, borderRadius: '50%', background: i < pin.length ? 'var(--ink)' : 'transparent', boxShadow: 'inset 0 0 0 1.5px var(--ink3)' }} />)}
+      </div>
+      <span style={{ minHeight: 18, textAlign: 'center', fontSize: 13, fontWeight: 600, color: 'var(--crit)' }}>{busy ? <span style={{ color: 'var(--ink2)', fontWeight: 500 }}>Checking…</span> : err}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k, i) => k
+          ? <button key={i} className="key" aria-label={k === 'del' ? 'Delete' : k} onClick={() => press(k)}>{k === 'del' ? '⌫' : k}</button>
+          : <span key={i} />)}
+      </div>
+    </Sheet>
+  );
+}
+
 export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; x.xd = null; x.ie = null; x.tb = null; x.td = null; x.pd = null; x.wd = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; x.xd = null; x.ie = null; x.tb = null; x.td = null; x.pd = null; x.wd = null; x.dd = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -847,6 +906,8 @@ export function Sheets() {
       {sh === 'task' && s.td && <TaskSheet />}
       {sh === 'proj' && s.pd && <ProjSheet />}
       {sh === 'weigh' && s.wd && <WeighSheet />}
+      {sh === 'doc' && s.dd && <DocSheet />}
+      {sh === 'pin' && <PinSheet />}
     </>
   );
 }
