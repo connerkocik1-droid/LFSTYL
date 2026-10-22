@@ -80,6 +80,12 @@ export async function loadRemote(sb: SupabaseClient, token: string): Promise<Sav
   return r.data && r.updated_at ? { data: r.data, at: new Date(r.updated_at).getTime() } : null;
 }
 
-export async function saveRemote(sb: SupabaseClient, token: string, v: Saved) {
-  await sb.rpc('lfstyl_save', { token, data: v.data, updated_at: new Date(v.at).toISOString() });
+export type SaveResult = { ok: true; at: number } | { ok: false; conflict: boolean };
+
+/** Saves only on top of the server copy this device last saw (base); refuses if another device saved since. */
+export async function saveRemote(sb: SupabaseClient, token: string, v: Saved, base: number | null): Promise<SaveResult> {
+  const { data, error } = await sb.rpc('lfstyl_save_v2', { token, data: v.data, updated_at: new Date(v.at).toISOString(), base: base == null ? null : new Date(base).toISOString() });
+  if (error) return { ok: false, conflict: false };
+  const r = data as { ok: boolean; conflict?: boolean; updated_at?: string };
+  return r.ok ? { ok: true, at: new Date(r.updated_at!).getTime() } : { ok: false, conflict: !!r.conflict };
 }

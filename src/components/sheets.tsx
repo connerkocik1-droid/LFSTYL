@@ -608,26 +608,122 @@ function CatSheet() {
 // ---------------------------------------------------------------- Expense
 
 function ExpSheet() {
-  const { s, upd } = useLf();
-  const e = s.expenses.find((x) => x.id === s.xe);
-  if (!e) return null;
+  const { s, m, dark, upd, patch } = useLf();
+  const e = s.expenses.find((x) => x.id === s.xe), d = s.xd;
+  if (!e || !d) return null;
   const goal = e.goal ? s.goals.find((g) => g.id === e.goal) : null;
-  const from = goal ? goal.name : e.cat ? catName(s, e.cat) : '';
+  const amt = parseFloat(d.amt) || 0, ok = amt > 0 && /^\d{4}-\d{2}-\d{2}$/.test(d.date);
+  const set = (k: 'amt' | 'note' | 'date') => (ev: React.ChangeEvent<HTMLInputElement>) => { const v = ev.target.value; patch((x) => ({ xd: { ...x.xd!, [k]: v } })); };
+  const fieldL = { font: '500 9.5px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' } as const;
   return (
     <Sheet>
-      <span className="lbl">EXPENSE · {U(D.wdm(e.date))}</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <span className="disp scan" style={{ fontSize: 64, lineHeight: 0.8 }}>{usd(e.amt)}</span>
-        <span style={{ fontSize: 15, fontWeight: 500 }}>{e.note}</span>
-        <span className="cap">{[from && 'FROM ' + U(from), e.src === 'sub' && 'SUBSCRIPTION', e.src === 'buy' && 'BUY STEP · ' + U(e.proj || '')].filter(Boolean).join(' · ')}</span>
+      <span className="lbl">EDIT EXPENSE{e.src === 'sub' ? ' · SUBSCRIPTION' : e.src === 'buy' ? ' · BUY STEP' : ''}</span>
+      {e.src === 'buy'
+        ? <span style={{ fontSize: 15, fontWeight: 500 }}>{e.note} <span style={{ color: 'var(--ink3)' }}>· {e.proj}</span></span>
+        : <input className="field" value={d.note} onChange={set('note')} placeholder="Note" style={{ height: 50, borderRadius: 16, padding: '0 16px', font: '600 17px/1 var(--f-text)' }} />}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={fieldL}>AMOUNT</span>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', font: '600 15px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+            <input className="field" value={d.amt} onChange={set('amt')} inputMode="decimal" aria-label="Amount" style={{ height: 48, padding: '0 14px 0 28px', fontWeight: 600 }} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={fieldL}>DATE</span>
+          <input className="field" type="date" value={d.date} onChange={set('date')} aria-label="Date" style={{ height: 48, padding: '0 12px', fontWeight: 600, colorScheme: dark ? 'dark' : 'light' }} />
+        </div>
       </div>
-      <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>
-        {e.src === 'buy' ? 'Deleting it puts the money back and marks the buy step as not bought.' : e.src === 'sub' ? "Deleting it puts the money back. The subscription itself stays; delete it under Subscriptions to stop future charges." : 'Deleting it puts the money back where it came from.'}
+      {goal ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: 44, padding: '0 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 13.5 }}><span className="dia" /><span>From {goal.name}</span></div>
+      ) : d.cat && (
+        <>
+          <span className="lbl">COMES OUT OF</span>
+          <Chips items={m.cats.map((c) => [c.id, c.name] as [CatId, string])} sel={d.cat} onPick={(id) => upd((x) => { x.xd!.cat = id; })} />
+        </>
+      )}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn-fill" onClick={() => upd((x) => R.delExpense(x, e.id))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Delete</button>
+        <button className={'btn' + (ok ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.saveExpense(x))}>Save</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 10 }}>
-        <button className="btn-fill" onClick={() => upd((x) => { x.xe = null; x.sheet = null; })} style={{ height: 54, borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Keep</button>
-        <button className="btn" onClick={() => upd((x) => R.delExpense(x, e.id))}>Delete expense</button>
+      <span className="cap" style={{ textAlign: 'center', lineHeight: 1.4 }}>{e.src === 'buy' ? 'DELETING MARKS THE BUY STEP AS NOT BOUGHT' : e.src === 'sub' ? 'DELETING KEEPS THE SUBSCRIPTION; REMOVE IT UNDER SUBSCRIPTIONS' : 'DELETING PUTS THE MONEY BACK'}</span>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Extra income entry
+
+function IncSheet() {
+  const { s, m, upd, patch } = useLf();
+  const d = s.ie!, e = (s.period.extras || []).find((x) => x.id === d.id);
+  if (!e) return null;
+  const amt = parseFloat(d.amt) || 0, after = r2(m.unassigned + (amt - e.amt)), afterDel = r2(m.unassigned - e.amt);
+  const blocked = after < -0.004, delBlocked = afterDel < -0.004;
+  const set = (k: 'amt' | 'src') => (ev: React.ChangeEvent<HTMLInputElement>) => { const v = ev.target.value; patch((x) => ({ ie: { ...x.ie!, [k]: v } })); };
+  return (
+    <Sheet>
+      <span className="lbl">EXTRA INCOME · {U(D.dm(e.date))}</span>
+      <input className="field" value={d.src} onChange={set('src')} placeholder="Where it's from" style={{ height: 50, borderRadius: 16, padding: '0 16px', font: '600 17px/1 var(--f-text)' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span className="lbl" style={{ flex: 1 }}>AMOUNT</span>
+        <div style={{ position: 'relative', width: 150 }}>
+          <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', font: '600 16px/1 var(--f-text)', color: 'var(--ink3)' }}>+$</span>
+          <input className="field" value={d.amt} onChange={set('amt')} inputMode="decimal" aria-label="Amount" style={{ height: 48, padding: '0 14px 0 34px', font: '600 16px/1 var(--f-text)', textAlign: 'right' }} />
+        </div>
       </div>
+      {(blocked || delBlocked) && (
+        <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>
+          <span style={{ color: 'var(--crit)', fontWeight: 600 }}>{usd(Math.max(-after, -afterDel))} of this has been placed. </span>
+          Use <b>Take back</b> on Money to move it back to Unassigned first, then lower or delete this entry.
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn-fill" disabled={delBlocked} onClick={() => upd((x) => R.saveIncomeEntry(x, true))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)', opacity: delBlocked ? 0.35 : 1 }}>Delete</button>
+        <button className={'btn' + (amt > 0 && !blocked ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.saveIncomeEntry(x))}>Save</button>
+      </div>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- Take back
+
+function TakeSheet() {
+  const { s, m, upd, patch } = useLf();
+  const tb = s.tb || {};
+  const opts = [
+    ...m.cats.filter((c) => c.alloc > 0).map((c) => ({ id: 'c:' + c.id, name: c.name, max: c.alloc, meta: `${usd(c.alloc, 0)} SET ASIDE · ${usd(c.left)} LEFT`, goal: false })),
+    ...m.p.goals.filter((pg) => pg.a > 0).map((pg) => ({ id: 'g:' + pg.id, name: s.goals.find((g) => g.id === pg.id)?.name || 'Goal', max: pg.a, meta: `${usd(pg.a)} PUT IN THIS PAYCHECK`, goal: true })),
+  ];
+  const val = (id: string) => parseFloat(tb[id] || '') || 0;
+  const total = r2(opts.reduce((t, o) => t + val(o.id), 0)), bad = opts.some((o) => val(o.id) > o.max + 0.004);
+  const setAmt = (id: string, v: string) => patch((x) => ({ tb: { ...(x.tb || {}), [id]: v.replace(/[^\d.]/g, '') } }));
+  return (
+    <Sheet>
+      <span className="lbl">TAKE BACK TO UNASSIGNED</span>
+      <span style={{ fontSize: 13.5, lineHeight: 1.4, color: 'var(--ink2)', textWrap: 'pretty' }}>Move money you placed this paycheck back to Unassigned. Tap a row to take all of it, or type an amount.</span>
+      <div className="pane" style={{ padding: '2px 0', borderRadius: 18 }}>
+        {opts.map((o, i) => {
+          const on = val(o.id) > 0, over = val(o.id) > o.max + 0.004;
+          return (
+            <div key={o.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 58, padding: '6px 8px 6px 16px' }}>
+              {i > 0 && <div className="sep" style={{ left: 16 }} />}
+              <button onClick={() => setAmt(o.id, on ? '' : String(o.max))} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, padding: 0, border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+                <span style={{ width: 20, height: 20, flex: 'none', borderRadius: 6, display: 'grid', placeItems: 'center', background: on ? 'var(--ink)' : 'none', boxShadow: on ? 'none' : 'inset 0 0 0 1.5px var(--ink3)' }}>{on && <span className="tick" />}</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, font: '600 14.5px/1.1 var(--f-text)' }}>{o.goal && <span className="dia" />}{o.name}</span>
+                  <span className="cap" style={{ letterSpacing: '.04em', color: over ? 'var(--crit)' : undefined }}>{over ? `ONLY ${usd(o.max)} TO TAKE` : o.meta}</span>
+                </span>
+              </button>
+              <div style={{ position: 'relative', width: 104, flex: 'none' }}>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', font: '600 15px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+                <input className="field" aria-label={`Take back from ${o.name}`} value={tb[o.id] || ''} onChange={(ev) => setAmt(o.id, ev.target.value)} placeholder="0" inputMode="decimal" style={{ height: 42, padding: '0 12px 0 24px', textAlign: 'right', font: '600 15px/1 var(--f-text)' }} />
+              </div>
+            </div>
+          );
+        })}
+        {!opts.length && <div style={{ padding: '18px', fontSize: 14, color: 'var(--ink2)' }}>Nothing has been placed this paycheck.</div>}
+      </div>
+      <button className={'btn' + (total > 0 && !bad ? '' : ' dim')} onClick={() => upd((x) => R.takeBack(x))}>{total > 0 ? `Move ${usd(total)} to Unassigned` : 'Pick what to take back'}</button>
     </Sheet>
   );
 }
@@ -636,7 +732,7 @@ export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; x.xd = null; x.ie = null; x.tb = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -654,6 +750,8 @@ export function Sheets() {
       {sh === 'goal' && s.gd && <GoalSheet />}
       {sh === 'cat' && s.cd && <CatSheet />}
       {sh === 'exp' && s.xe && <ExpSheet />}
+      {sh === 'inc' && s.ie && <IncSheet />}
+      {sh === 'take' && <TakeSheet />}
     </>
   );
 }

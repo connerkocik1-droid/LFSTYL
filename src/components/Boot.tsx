@@ -44,7 +44,7 @@ const fromSaved = (v: Saved | null, today: string): State => {
   return s;
 };
 
-type Phase = { k: 'loading' } | { k: 'signin' } | { k: 'ready'; state: State; token: string | null; scope?: string } | { k: 'demo'; state: State; scroll?: number };
+type Phase = { k: 'loading' } | { k: 'signin' } | { k: 'ready'; state: State; token: string | null; scope?: string; rev: number } | { k: 'demo'; state: State; scroll?: number };
 
 export default function Boot() {
   const prefersDark = useMedia('(prefers-color-scheme: dark)', true);
@@ -63,29 +63,72 @@ export default function Boot() {
       return;
     }
     const sb = supabase();
-    if (!sb) { setPhase({ k: 'ready', state: fromSaved(loadLocal(), localToday()), token: null }); return; }
+    if (!sb) { setPhase({ k: 'ready', state: fromSaved(loadLocal(), localToday()), token: null, rev: 0 }); return; }
     const sess = loadSession();
     if (sess) start(sess); else setPhase({ k: 'signin' });
   }, []);
 
-  /** Opens the app for a signed-in account, using whichever copy of the data is newer. */
-  const start = async (sess: Session) => {
+  // The server copy this device last loaded or saved. Saves are only accepted on top of it.
+  const serverAt = useRef<number | null>(null);
+  const sessRef = useRef<Session | null>(null);
+  const lastJson = useRef('');
+  const remoteT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  // The tab you were on, so a reload from another device keeps you there.
+  const lastTab = useRef<State['tab']>('today');
+
+  /** Opens the app for a signed-in account with whichever copy is newer (or the server's, after a conflict). */
+  const start = async (sess: Session, opts: { preferRemote?: boolean; note?: string } = {}) => {
+    sessRef.current = sess;
     const sb = supabase()!, local = loadLocal(sess.name);
-    let remote: Saved | null = null;
+    let remote: Saved | null = null, online = true;
     try {
       const r = await loadRemote(sb, sess.token);
       if (r === 'signed-out') { saveSession(null); setPhase({ k: 'signin' }); return; }
       remote = r;
-    } catch { /* offline: open with what is on the device */ }
-    const best = remote && (!local || remote.at >= local.at) ? remote : local;
-    setPhase({ k: 'ready', state: fromSaved(best, localToday()), token: sess.token, scope: sess.name });
+    } catch { online = false; }
+    serverAt.current = remote ? remote.at : null;
+    const useRemote = !!remote && (opts.preferRemote || !local || remote.at >= local.at);
+    const best = useRemote ? remote : local;
+    if (useRemote) saveLocal(remote!, sess.name);
+    // This device has changes the server never got (closed before they synced): send them now.
+    else if (online && local) queueSave(sess.token, local);
+    const state = fromSaved(best, localToday());
+    if (opts.note) { state.toast = { t: opts.note, id: Date.now() }; state.tab = lastTab.current; }
+    lastJson.current = '';
+    setPhase({ k: 'ready', state, token: sess.token, scope: sess.name, rev: Date.now() });
   };
 
+  const queueSave = (tok: string, v: Saved) => {
+    const sb = supabase();
+    if (!sb) return;
+    saving.current = saving.current.then(async () => {
+      const r = await saveRemote(sb, tok, v, serverAt.current);
+      if (r.ok) serverAt.current = r.at;
+      else if (r.conflict && sessRef.current) await start(sessRef.current, { preferRemote: true, note: 'Updated from another device · your last change was not saved' });
+    }).catch(() => {});
+  };
+
+  // Coming back to the app: pick up anything another device saved meanwhile.
+  useEffect(() => {
+    const onVis = async () => {
+      const sess = sessRef.current, sb = supabase();
+      if (document.visibilityState !== 'visible' || !sess || !sb) return;
+      try {
+        const r = await loadRemote(sb, sess.token);
+        if (r === 'signed-out') { saveSession(null); setPhase({ k: 'signin' }); return; }
+        if (r && (serverAt.current == null || r.at > serverAt.current)) await start(sess, { preferRemote: true, note: 'Updated from your other device' });
+      } catch { /* offline */ }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Save on every change: locally right away, to Supabase shortly after.
-  const lastJson = useRef('');
-  const remoteT = useRef<ReturnType<typeof setTimeout> | null>(null);
   const token = phase.k === 'ready' ? phase.token : null, scope = phase.k === 'ready' ? phase.scope : undefined;
   const onChange = useCallback((s: State) => {
+    lastTab.current = s.tab;
     const data = pickData(s), json = JSON.stringify(data);
     if (json === lastJson.current) return;
     const first = !lastJson.current;
@@ -93,11 +136,11 @@ export default function Boot() {
     if (first && loadLocal(scope)) return; // nothing changed yet; keep the stored timestamp
     const v: Saved = { data, at: Date.now() };
     saveLocal(v, scope);
-    const sb = supabase();
-    if (sb && token) {
+    if (token) {
       if (remoteT.current) clearTimeout(remoteT.current);
-      remoteT.current = setTimeout(() => { saveRemote(sb, token, v).catch(() => {}); }, 800);
+      remoteT.current = setTimeout(() => queueSave(token, v), 800);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, scope]);
 
   const dark = forced ? forced === 'dark' : prefersDark;
@@ -105,7 +148,7 @@ export default function Boot() {
   if (phase.k === 'signin') return <Account dark={dark} time={clock.time} onDone={(sess) => { saveSession(sess); setPhase({ k: 'loading' }); start(sess); }} />;
   if (phase.k === 'demo') return <LfApp initial={phase.state} dark={dark} time={clock.time} drift={!reduced} scrollTo={phase.scroll} />;
   const initial = clock.today > phase.state.today ? { ...phase.state, today: clock.today } : phase.state;
-  return <LfApp initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} />;
+  return <LfApp key={phase.rev} initial={initial} dark={dark} time={clock.time} drift={!reduced} onChange={onChange} />;
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];

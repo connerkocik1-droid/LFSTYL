@@ -276,8 +276,32 @@ export function Money() {
             <span className="lbl">UNASSIGNED</span>
             <span className="disp" style={{ fontSize: 36, lineHeight: 0.85 }}>{usd(m.unassigned)}</span>
           </div>
-          <button className="btn-fill" onClick={() => m.unassigned > 0 && upd((x) => R.openPlace(x, m.unassigned))} style={{ height: 44, padding: '0 18px', borderRadius: 14, font: '600 13.5px/1 var(--f-text)', opacity: m.unassigned > 0 ? 1 : 0.35 }}>Place it</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(m.allocT > 0 || m.p.goals.length > 0) && <button className="btn-fill" onClick={() => upd((x) => { x.tb = {}; x.sheet = 'take'; })} style={{ height: 44, padding: '0 14px', borderRadius: 14, font: '600 13.5px/1 var(--f-text)' }}>Take back</button>}
+            <button className="btn-fill" onClick={() => m.unassigned > 0 && upd((x) => R.openPlace(x, m.unassigned))} style={{ height: 44, padding: '0 16px', borderRadius: 14, font: '600 13.5px/1 var(--f-text)', opacity: m.unassigned > 0 ? 1 : 0.35 }}>Place it</button>
+          </div>
         </div>
+      )}
+      {cur && m.p.pay === 0 && !(m.p.extras || []).length && (
+        <div className="pane" style={{ margin: '12px 14px 0', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span className="lbl">BEFORE YOUR FIRST PAYCHECK</span>
+          <span style={{ fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>Add the money you have now, then place it in categories so spending before payday has a budget.</span>
+          <button className="btn" style={{ height: 48, borderRadius: 16 }} onClick={() => upd((x) => { x.sheet = 'income'; x.draft = { amt: '', cat: null, note: 'Money on hand', y: false }; })}>Add money on hand</button>
+        </div>
+      )}
+      {cur && (m.p.extras || []).length > 0 && (
+        <>
+          <Sec l="EXTRA INCOME" r={usd(m.p.extra)} />
+          <div className="pane list">
+            {(m.p.extras || []).map((e, i) => (
+              <button key={e.id} onClick={() => upd((x) => R.openIncomeEntry(x, e.id))} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', minHeight: 54, padding: '8px 16px 8px 18px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+                {i > 0 && <span className="sep" />}
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}><span style={{ fontSize: 15, fontWeight: 500 }}>{e.src}</span><span className="cap">{U(D.dm(e.date))}</span></span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}><span style={{ font: '600 15px/1 var(--f-text)' }}>+{usd(e.amt)}</span><span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span></span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
       <Sec l="CATEGORIES" r="LEFT" />
       <div className="pane list">
@@ -321,7 +345,7 @@ export function Money() {
           <Sec l="EXPENSES" r={m.exp.length} />
           <div className="pane list">
             {m.exp.map((e, i) => (
-              <div key={e.id} role="button" aria-label={`${e.note}, ${usd(e.amt)}`} onClick={() => upd((x) => { x.xe = e.id; x.sheet = 'exp'; })} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, minHeight: 60, padding: '10px 16px 10px 18px', cursor: 'pointer' }}>
+              <div key={e.id} role="button" aria-label={`${e.note}, ${usd(e.amt)}`} onClick={() => upd((x) => R.openExp(x, e.id))} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, minHeight: 60, padding: '10px 16px 10px 18px', cursor: 'pointer' }}>
                 {i > 0 && <div className="sep" />}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
                   <span style={{ fontSize: 15, fontWeight: 500 }}>{e.note}</span>

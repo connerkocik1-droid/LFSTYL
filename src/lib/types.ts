@@ -12,7 +12,10 @@ export interface Period {
   start: string;
   end: string;
   pay: number;
+  /** Total extra income this period; always the sum of extras. */
   extra: number;
+  /** Each extra income entry (missing in saves from before they were editable). */
+  extras?: { id: string; amt: number; src: string; date: string }[];
   bills: PeriodBill[];
   cats: PeriodCat[];
   goals: { id: string; a: number }[];
@@ -112,7 +115,7 @@ export type View =
   | { k: 'setup'; from?: View | null }
   | { k: 'subs'; from?: View | null }
   | { k: 'plan'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp';
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp' | 'inc' | 'take';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -152,6 +155,12 @@ export interface UI {
   cd: CatDraft | null;
   /** The expense open for deleting. */
   xe: string | null;
+  /** Draft for the expense being edited. */
+  xd: { id: string; amt: string; note: string; date: string; cat: CatId | null } | null;
+  /** Draft for the extra income entry being edited. */
+  ie: { id: string; amt: string; src: string } | null;
+  /** Amounts to move back to Unassigned, keyed like the place split. */
+  tb: Record<string, string> | null;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;
