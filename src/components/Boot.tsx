@@ -112,7 +112,7 @@ function SignIn({ dark, time }: { dark: boolean; time: TimeOfDay }) {
   const sb = supabase()!;
   const send = async () => {
     setBusy(true); setErr('');
-    const { error } = await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
+    const { error } = await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: window.location.origin } });
     setBusy(false);
     if (error) setErr(error.message); else setSent(true);
   };
