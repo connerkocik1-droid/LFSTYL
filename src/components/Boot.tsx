@@ -116,25 +116,31 @@ function SignIn({ dark, time }: { dark: boolean; time: TimeOfDay }) {
     setBusy(false);
     if (error) setErr(error.message); else setSent(true);
   };
+  // The emailed link carries the same one-time token as the code, so a pasted link signs in too.
+  // That keeps sign-in inside the installed app even when the email has no code in it.
+  const link = (() => { try { const u = new URL(code.trim()); const t = u.searchParams.get('token') || u.searchParams.get('token_hash'); return t ? { t, type: u.searchParams.get('type') || 'email' } : null; } catch { return null; } })();
   const verify = async () => {
     setBusy(true); setErr('');
-    const { error } = await sb.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
+    const { error } = link
+      ? await sb.auth.verifyOtp({ token_hash: link.t, type: (['signup', 'magiclink', 'invite', 'recovery', 'email_change'].includes(link.type) ? link.type : 'email') as 'email' })
+      : await sb.auth.verifyOtp({ email: email.trim(), token: code.replace(/\D/g, ''), type: 'email' });
     setBusy(false);
-    if (error) setErr(error.message);
+    if (error) setErr(link ? 'That link has expired or was already used. Send a new one.' : error.message);
   };
-  const ok = sent ? code.trim().length >= 6 : /.+@.+\..+/.test(email.trim());
+  const ok = sent ? !!link || code.replace(/\D/g, '').length >= 6 : /.+@.+\..+/.test(email.trim());
   return (
     <div className={'lf' + (dark ? '' : ' light')}>
       <Background dark={dark} health="Healthy" time={time} drift />
       <div className="boot">
         <span className="disp up scan" style={{ fontSize: 96, lineHeight: 0.8 }}>LFSTYL</span>
-        <span style={{ fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)', marginBottom: 10 }}>{sent ? `Enter the code sent to ${email.trim()}.` : 'Sign in to sync your tasks, money and goals across devices.'}</span>
+        <span style={{ fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)', marginBottom: 10 }}>{sent ? `Check ${email.trim()}. Type the code, or press and hold the link in the email, tap Copy Link, and paste it here.` :'Sign in to sync your tasks, money and goals across devices.'}</span>
         {sent
-          ? <input className="field" value={code} onChange={(e) => setCode(e.target.value)} placeholder="6-digit code" inputMode="numeric" autoComplete="one-time-code" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 19px/1 var(--f-text)', letterSpacing: '.2em' }} />
+          ? <input className="field" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Code or link" autoComplete="one-time-code" autoCapitalize="off" autoCorrect="off" spellCheck={false} style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 17px/1 var(--f-text)' }} />
           : <input className="field" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="email" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 17px/1 var(--f-text)' }} />}
         {err && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--crit)' }}>{err}</span>}
         <button className={'btn' + (ok && !busy ? '' : ' dim')} disabled={!ok || busy} onClick={sent ? verify : send}>{busy ? 'One moment…' : sent ? 'Sign in' : 'Email me a code'}</button>
         {sent && <button className="back" style={{ alignSelf: 'center', margin: 0 }} onClick={() => { setSent(false); setCode(''); }}>USE A DIFFERENT EMAIL</button>}
+        {!sent && <button className="back" style={{ alignSelf: 'center', margin: 0 }} onClick={() => { setErr(''); setSent(true); }}>I ALREADY HAVE AN EMAIL</button>}
       </div>
     </div>
   );
