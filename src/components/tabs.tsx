@@ -2,9 +2,9 @@
 
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, gi, idleDays, limitOn, nextP, phaseInfo, pouchesToday, taskRel } from '@/lib/logic';
+import { CATN, R, TIER, gi, idleDays, limitOn, nextP, nicotineOn, phaseInfo, pouchesToday, taskRel } from '@/lib/logic';
 import type { State } from '@/lib/types';
-import { Check, Hero, Lens, LensButton, MoneyBars, Sec, useLf } from './ui';
+import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
 const U = (t: string) => t.toUpperCase();
 
@@ -105,7 +105,7 @@ export function Today() {
       </Lens>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, margin: '12px 14px 0' }}>
-        <div className="pane" onClick={() => upd((x) => { x.view = { k: 'wean' }; })} style={{ minHeight: 150, cursor: 'pointer', padding: '14px 12px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
+        {nicotineOn(s) && <div className="pane" onClick={() => upd((x) => { x.view = { k: 'wean' }; })} style={{ minHeight: 150, cursor: 'pointer', padding: '14px 12px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
           <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', paddingRight: 4 }}><span>POUCHES</span><span>{pi ? pi.mg : ''}</span></div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
             <div className="disp" style={{ display: 'flex', alignItems: 'baseline', lineHeight: 0.86, overflow: 'hidden' }}><span style={{ fontSize: 60 }}><PouchNum n={pn} over={pOver} /></span>{lim != null && <span style={{ fontSize: 30, color: 'var(--ink3)', marginLeft: 2 }}>/{lim}</span>}</div>
@@ -115,8 +115,8 @@ export function Today() {
           </div>
           {lim != null && <Pips n={pn} lim={lim} w={14} h={5} gap={3} />}
           <div style={{ font: `${pOver ? 600 : 500} 9.5px/1 var(--f-mono)`, letterSpacing: '.08em', color: pOver ? 'var(--crit)' : 'var(--ink3)' }}>{!pi ? 'TODAY · NO PLAN YET' : pOver ? `${pn - lim!} OVER TODAY'S LIMIT` : `PHASE ${pi.idx + 1} · ENDS ${U(D.dm(pi.ph.end))}`}</div>
-        </div>
-        <div className="pane" onClick={daysTo == null && !ov.length ? () => upd((x) => { x.tab = 'money'; x.view = { k: 'setup' }; }) : goMoney} style={{ minHeight: 150, cursor: 'pointer', padding: '14px 12px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
+        </div>}
+        <div className="pane" onClick={daysTo == null && !ov.length ? () => upd((x) => { x.tab = 'money'; x.view = { k: 'setup' }; }) : goMoney} style={{ minHeight: 150, cursor: 'pointer', padding: '14px 12px 14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8, gridColumn: nicotineOn(s) ? undefined : 'span 2' }}>
           <div className="lbl">{ov.length ? 'OVER BUDGET' : daysTo == null ? 'GET STARTED' : 'ON TRACK'}</div>
           <div>
             <div className="disp up" style={{ fontSize: 34, lineHeight: 0.86 }}>{ov.length ? ov[0].name : daysTo == null ? 'Set up pay' : `${daysTo} days`}</div>
@@ -375,15 +375,15 @@ export function Goals() {
       <div className="h-tab"><span className="t">Goals</span><span className="mono" style={{ font: '500 11px/1 var(--f-mono)', letterSpacing: '.1em', color: 'var(--ink2)', paddingBottom: 4 }}>{usd(sum(s.goals.filter((g) => g.status !== 'done'), (g) => g.per), 0)} / PAYCHECK</span></div>
       <div className="lbl" style={{ padding: '0 22px', margin: '6px 0 10px' }}>LIFESTYLE</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '0 14px' }}>
-        <div className="pane" onClick={() => upd((x) => { x.view = { k: 'wean' }; })} style={{ padding: '15px 14px 14px 16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {nicotineOn(s) && <div className="pane" onClick={() => upd((x) => { x.view = { k: 'wean' }; })} style={{ padding: '15px 14px 14px 16px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={{ fontSize: 14.5, fontWeight: 500 }}>Nicotine wean-off</span>
           <span className="disp" style={{ fontSize: 44, lineHeight: 0.82 }}>{pi ? `${pn}/${pi.limit}` : pn}</span>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 22 }}>
             {days.map((d) => <div key={d.iso} style={{ flex: 1, height: Math.min(22, (d.t / 10) * 22), borderRadius: 1, background: d.over ? 'var(--crit)' : 'var(--ink)', opacity: d.over || d.today ? 1 : 0.5 }} />)}
           </div>
           <span style={{ font: '500 9.5px/1.3 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{pi ? `PHASE ${pi.idx + 1} OF ${pi.n} · ${pi.mg}` : 'POUCHES TODAY · NO PLAN YET'}</span>
-        </div>
-        <div className="pane" style={{ padding: '15px 14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        </div>}
+        <div className="pane" style={{ padding: '15px 14px 14px 16px', display: 'flex', flexDirection: 'column', gap: 10, gridColumn: nicotineOn(s) ? undefined : 'span 2' }}>
           <span style={{ fontSize: 14.5, fontWeight: 500 }}>Weight</span>
           {wv.length ? (
             <>
@@ -399,6 +399,12 @@ export function Goals() {
           )}
         </div>
       </div>
+      {!nicotineOn(s) && (
+        <div className="pane mx" style={{ marginTop: 10, padding: '12px 16px 12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={{ fontSize: 15, fontWeight: 500 }}>Nicotine wean-off</span><span className="cap">HIDDEN · TURN ON TO TRACK POUCHES</span></span>
+          <Switch on={false} label="Track nicotine" onChange={(on) => upd((x) => R.setNicotine(x, on))} />
+        </div>
+      )}
       <div className="lbl" style={{ padding: '0 22px', margin: '24px 0 10px' }}>MONEY</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 14px' }}>
         {live.map((g) => {

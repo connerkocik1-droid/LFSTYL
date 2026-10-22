@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import * as D from '@/lib/dates';
 import { r2, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, gi, phaseInfo, pouchesToday } from '@/lib/logic';
+import { CATN, R, TIER, gi, nicotineOn, phaseInfo, pouchesToday } from '@/lib/logic';
 import type { CatId, State, Tier } from '@/lib/types';
 import { Keypad, useLf } from './ui';
 
@@ -80,9 +80,9 @@ function AddSheet() {
           <span style={{ font: '500 10px/1 var(--f-mono)', letterSpacing: '.08em' }}>AMOUNT · CATEGORY · DONE</span>
         </button>
         <button className="btn-fill" style={tile} onClick={() => upd((x) => { x.sheet = 'income'; x.draft = { amt: '', cat: null, note: '', y: false }; })}>{T('Income', 'LANDS IN UNASSIGNED')}</button>
-        <button className="btn-fill" style={tile} onClick={() => upd((x) => { R.pouch(x, 1); x.sheet = null; x.toast = { t: `Pouch logged · ${of(pouchesToday(x))} today` }; })}>{T('Pouch +1', `${of(pouchesToday(s))} TODAY`.toUpperCase())}</button>
+        {nicotineOn(s) && <button className="btn-fill" style={tile} onClick={() => upd((x) => { R.pouch(x, 1); x.sheet = null; x.toast = { t: `Pouch logged · ${of(pouchesToday(x))} today` }; })}>{T('Pouch +1', `${of(pouchesToday(s))} TODAY`.toUpperCase())}</button>}
         <button className="btn-fill" style={tile} onClick={() => upd((x) => { x.sheet = 'np'; })}>{T('Project', 'STEPS + BUY STEPS')}</button>
-        <button className="btn-fill" style={tile} onClick={() => upd((x) => R.openStep(x, 'task', 'action'))}>{T('Task', 'ONE TO-DO')}</button>
+        <button className="btn-fill" style={nicotineOn(s) ? tile : { ...tile, gridColumn: 'span 2' }} onClick={() => upd((x) => R.openStep(x, 'task', 'action'))}>{T('Task', 'ONE TO-DO')}</button>
       </div>
     </Sheet>
   );
@@ -390,11 +390,47 @@ function EdSheet() {
   );
 }
 
+// ---------------------------------------------------------------- Wean-off phase
+
+function PhaseSheet() {
+  const { s, dark, upd, patch } = useLf();
+  const p = s.ph!, limit = parseInt(p.limit, 10), iso = /^\d{4}-\d{2}-\d{2}$/;
+  const datesOk = iso.test(p.start) && iso.test(p.end) && p.end >= p.start;
+  const ok = datesOk && limit >= 0;
+  const days = datesOk ? D.diff(p.end, p.start) + 1 : 0;
+  const set = (k: 'start' | 'end' | 'limit' | 'mg') => (ev: React.ChangeEvent<HTMLInputElement>) => { const v = ev.target.value; patch((x) => ({ ph: { ...x.ph!, [k]: v } })); };
+  const fieldL = { font: '500 9.5px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' } as const;
+  const box = (label: string, input: ReactNode) => <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}><span style={fieldL}>{label}</span>{input}</div>;
+  const dateIn = { height: 48, padding: '0 12px', fontWeight: 600, colorScheme: dark ? 'dark' : 'light' } as const;
+  const n = p.idx != null ? p.idx + 1 : s.phases.length + 1;
+  return (
+    <Sheet>
+      <span className="lbl">{p.idx != null ? `EDIT PHASE ${n}` : `NEW PHASE · ${n}`}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
+        {box('STARTS', <input className="field" type="date" value={p.start} onChange={set('start')} style={dateIn} />)}
+        {box('ENDS', <input className="field" type="date" value={p.end} onChange={set('end')} style={dateIn} />)}
+        {box('POUCHES A DAY', <input className="field" value={p.limit} onChange={set('limit')} placeholder="6" inputMode="numeric" style={{ height: 48, fontWeight: 600 }} />)}
+        {box('STRENGTH (MG)', <input className="field" value={p.mg} onChange={set('mg')} placeholder="4" inputMode="decimal" style={{ height: 48, fontWeight: 600 }} />)}
+      </div>
+      <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ font: '600 10px/1.4 var(--f-mono)', letterSpacing: '.06em', color: datesOk ? 'var(--ink)' : 'var(--crit)' }}>
+          {!datesOk ? 'THE END DATE MUST BE ON OR AFTER THE START' : `${days} ${days === 1 ? 'DAY' : 'DAYS'} · ${U(D.dm(p.start))} – ${U(D.dm(p.end))}`}
+        </span>
+        <span style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>Each day in this phase, your pouch count is measured against this limit. Going over is shown, not blocked.</span>
+      </div>
+      <div style={{ display: 'flex', gap: 10 }}>
+        {p.idx != null && <button className="btn-fill" onClick={() => upd((x) => R.delPhase(x))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Delete</button>}
+        <button className={'btn' + (ok ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.savePhase(x))}>{p.idx != null ? 'Save phase' : 'Add phase'}</button>
+      </div>
+    </Sheet>
+  );
+}
+
 export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -407,6 +443,7 @@ export function Sheets() {
       {sh === 'price' && s.pr && <PriceSheet />}
       {sh === 'done' && s.dn && <DoneSheet />}
       {sh === 'ed' && s.ed && <EdSheet />}
+      {sh === 'phase' && s.ph && <PhaseSheet />}
     </>
   );
 }

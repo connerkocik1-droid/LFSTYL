@@ -68,6 +68,8 @@ export function rvUn(s: State) {
   return r2(n.pay - sum(n.bills, (b) => b.a) - sum(Object.values(s.rv!.cats) as number[]) - sum(Object.values(s.rv!.goals)));
 }
 
+export const nicotineOn = (s: State) => s.nicotineOn !== false;
+
 /** The wean-off phase for a day. Null until a plan exists. */
 export function phaseInfo(s: State, iso = s.today) {
   if (!s.phases.length) return null;
@@ -76,7 +78,8 @@ export function phaseInfo(s: State, iso = s.today) {
   const ph: Phase = s.phases[idx];
   return { idx, n: s.phases.length, ph, limit: ph.limit, mg: ph.mg };
 }
-export const limitOn = (s: State, iso: string) => phaseInfo(s, iso)?.limit ?? null;
+/** That day's limit, or null for a day outside the plan. */
+export const limitOn = (s: State, iso: string) => s.phases.find((ph) => iso >= ph.start && iso <= ph.end)?.limit ?? null;
 export const pouchesToday = (s: State) => s.pouchLog[s.today] || 0;
 
 const relOf = (s: State, due: string | null) => (due ? D.diff(due, s.today) : null);
@@ -287,6 +290,35 @@ export const R = {
     if (e.kind === 'inc') { if (s.incomes.length > 1 && s.incomes[0].id === e.id) return; s.incomes = s.incomes.filter((x) => x.id !== e.id); }
     else s.billsDef = s.billsDef.filter((x) => x.id !== e.id);
     s.toast = { t: 'Removed ' + e.name }; s.ed = null; s.sheet = null;
+  },
+  openPhase(s: State, idx: number | null) {
+    const ph = idx != null ? s.phases[idx] : null, last = s.phases[s.phases.length - 1];
+    const start = ph ? ph.start : last && last.end >= s.today ? D.add(last.end, 1) : s.today;
+    s.ph = ph
+      ? { idx, start: ph.start, end: ph.end, limit: String(ph.limit), mg: ph.mg.replace(/\s*MG$/i, '') }
+      : { idx: null, start, end: D.add(start, 20), limit: last ? String(Math.max(0, last.limit - 2)) : '', mg: '' };
+    s.sheet = 'phase';
+  },
+  savePhase(s: State) {
+    const p = s.ph!, limit = parseInt(p.limit, 10), iso = /^\d{4}-\d{2}-\d{2}$/;
+    if (!iso.test(p.start) || !iso.test(p.end) || p.end < p.start || !(limit >= 0)) return;
+    const mg = p.mg.trim();
+    const v = { start: p.start, end: p.end, limit, mg: mg ? (/^[\d.]+$/.test(mg) ? mg + ' MG' : mg.toUpperCase()) : '' };
+    if (p.idx != null) s.phases[p.idx] = v; else s.phases.push(v);
+    s.phases.sort((a, b) => (a.start < b.start ? -1 : 1));
+    s.ph = null; s.sheet = null;
+    s.toast = { t: 'Plan saved' };
+  },
+  delPhase(s: State) {
+    const p = s.ph!;
+    if (p.idx != null) s.phases.splice(p.idx, 1);
+    s.ph = null; s.sheet = null;
+    s.toast = { t: 'Phase removed' };
+  },
+  setNicotine(s: State, on: boolean) {
+    s.nicotineOn = on;
+    if (!on && s.view && s.view.k === 'wean') { s.view = null; s.tab = 'goals'; }
+    s.toast = { t: on ? 'Nicotine tracking is on' : 'Nicotine tracking hidden · turn it back on in Goals' };
   },
   pouch(s: State, d: number) { s.pouchLog[s.today] = Math.max(0, (s.pouchLog[s.today] || 0) + d); },
 };
