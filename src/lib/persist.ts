@@ -29,10 +29,16 @@ export function saveLocal(v: Saved) {
 
 let client: SupabaseClient | null | undefined;
 
-/** Null unless both Supabase env vars are set at build time. */
+// The LFSTYL project. Both values are public (they ship to every browser); row-level security
+// keeps each user's row private. Env vars override them, and setting both to "off" disables sync.
+const DEFAULT_URL = 'https://pocxcrqwlacfomucrjpy.supabase.co';
+const DEFAULT_KEY = 'sb_publishable_FSs6NU8AMJOt8Frysv1u2A_ULBqL9Pq';
+
+/** Null when sync is turned off. */
 export function supabase(): SupabaseClient | null {
   if (client !== undefined) return client;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_URL, key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_KEY;
+  if (url === 'off' || key === 'off') return (client = null);
   client = url && key ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } }) : null;
   return client;
 }

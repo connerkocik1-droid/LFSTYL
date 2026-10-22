@@ -33,13 +33,15 @@ The design is the 1c "Lens + panes" direction: thick glass on the money hero, th
 
 Not built yet, matching the design: weight detail, Library document and event detail, the task edit sheet, and the desktop layout. The Library tab shows the design's sample folders and events.
 
-## Sync with Supabase (optional)
+## Sync with Supabase
 
-1. Create a Supabase project and run `supabase/migrations/0001_lfstyl_state.sql` in its SQL editor. This creates one row of app data per user, protected by row-level security.
-2. In **Authentication → Email Templates → Magic Link**, include `{{ .Token }}` in the email so it carries a 6-digit code. The app signs in with a code because a link would open the browser instead of the installed app.
-3. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see `.env.example`) locally and in Vercel.
+The app syncs with the LFSTYL Supabase project (`pocxcrqwlacfomucrjpy`). Its URL and publishable key are built in as defaults in `src/lib/persist.ts`. Both are public values that ship to every browser, and row-level security keeps each user's row private. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` override them; set either one to `off` to keep data on the device only.
 
-With both variables set, the app asks for your email once, then saves every change locally right away and to Supabase shortly after. On launch it uses whichever copy is newer.
+You sign in once with your email. The app then saves every change locally right away and to Supabase shortly after, and on launch it uses whichever copy is newer.
+
+**Email templates:** sign-in uses a 6-digit code, because inside the installed app a link would open the browser instead. In Supabase, go to **Authentication → Email Templates** and add `{{ .Token }}` to both **Magic Link** and **Confirm signup** (your first sign-in uses Confirm signup). The link in those emails still works if you open the app in a browser.
+
+The schema is in `supabase/migrations/0001_lfstyl_state.sql` and has already been applied.
 
 ## Icons
 
