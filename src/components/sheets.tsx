@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import * as D from '@/lib/dates';
 import { r2, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, gi, nicotineOn, phaseInfo, pouchesToday } from '@/lib/logic';
+import { CATN, R, TIER, gi, nicotineOn, phaseInfo, pouchesToday, subStep } from '@/lib/logic';
 import type { CatId, State, Tier } from '@/lib/types';
 import { Keypad, useLf } from './ui';
 
@@ -426,11 +426,57 @@ function PhaseSheet() {
   );
 }
 
+// ---------------------------------------------------------------- Subscription
+
+function SubSheet() {
+  const { s, m, dark, upd, patch } = useLf();
+  const e = s.sb!, amt = parseFloat(String(e.amt).replace(/[$,]/g, '')) || 0, valid = /^\d{4}-\d{2}-\d{2}$/.test(e.next);
+  const past = valid && !e.id && e.next < s.today;
+  const ok = !!e.name.trim() && amt > 0 && valid && !past;
+  const set = (k: 'name' | 'amt' | 'next') => (ev: React.ChangeEvent<HTMLInputElement>) => { const v = ev.target.value; patch((x) => ({ sb: { ...x.sb!, [k]: v } })); };
+  const fieldL = { font: '500 9.5px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' } as const;
+  let preview = '';
+  if (valid) { const d2 = subStep(e.next, e.freq), d3 = subStep(d2, e.freq); preview = 'CHARGES ' + U(D.dm(e.next)) + ' · ' + U(D.dm(d2)) + ' · ' + U(D.dm(d3)); }
+  return (
+    <Sheet>
+      <span className="lbl">{e.id ? 'EDIT SUBSCRIPTION' : 'NEW SUBSCRIPTION'}</span>
+      <input className="field" value={e.name} onChange={set('name')} placeholder="Name, e.g. Netflix" style={{ height: 54, borderRadius: 16, padding: '0 16px', font: '600 18px/1 var(--f-text)' }} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={fieldL}>AMOUNT</span>
+          <div style={{ position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', font: '600 15px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+            <input className="field" value={e.amt} onChange={set('amt')} placeholder="0" inputMode="decimal" style={{ height: 48, padding: '0 14px 0 28px', fontWeight: 600 }} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={fieldL}>NEXT CHARGE</span>
+          <input className="field" type="date" value={e.next} onChange={set('next')} style={{ height: 48, padding: '0 12px', fontWeight: 600, colorScheme: dark ? 'dark' : 'light' }} />
+        </div>
+      </div>
+      <span className="lbl">REPEATS</span>
+      <Chips items={[['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']]} sel={e.freq} cols={3} onPick={(id) => upd((x) => { x.sb!.freq = id; })} />
+      <span className="lbl">COMES OUT OF</span>
+      <Chips items={m.cats.map((c) => [c.id, c.name] as [CatId, string])} sel={e.cat} onPick={(id) => upd((x) => { x.sb!.cat = id; })} />
+      {(preview || past) && (
+        <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ font: '600 10px/1.4 var(--f-mono)', letterSpacing: '.06em', color: past ? 'var(--crit)' : 'var(--ink)' }}>{past ? 'PICK TODAY OR A LATER DATE' : preview}</span>
+          <span style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>{e.next === s.today ? "Today's charge is logged as soon as you save." : 'Each charge is logged as an expense on its date, even if the app is closed that day.'}</span>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10 }}>
+        {!!e.id && <button className="btn-fill" onClick={() => upd((x) => R.delSub(x))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Delete</button>}
+        <button className={'btn' + (ok ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.saveSub(x))}>{e.id ? 'Save' : 'Add subscription'}</button>
+      </div>
+    </Sheet>
+  );
+}
+
 export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -444,6 +490,7 @@ export function Sheets() {
       {sh === 'done' && s.dn && <DoneSheet />}
       {sh === 'ed' && s.ed && <EdSheet />}
       {sh === 'phase' && s.ph && <PhaseSheet />}
+      {sh === 'sub' && s.sb && <SubSheet />}
     </>
   );
 }

@@ -1,7 +1,7 @@
 import * as D from './dates';
 import { r2, sum, usd } from './format';
 import { SEED_TODAY, emptyData, freshUI, seedData } from './seed';
-import type { CatId, Goal, Phase, State, Tier } from './types';
+import type { CatId, Goal, Phase, State, Sub, Tier } from './types';
 
 const MONTH = (iso: string) => iso.slice(0, 7);
 /** "13 – 26 OCT" or "28 OCT – 10 NOV" */
@@ -315,6 +315,27 @@ export const R = {
     s.ph = null; s.sheet = null;
     s.toast = { t: 'Phase removed' };
   },
+  openSub(s: State, id: string | null) {
+    const v = id ? (s.subs || []).find((x) => x.id === id) : null;
+    s.sb = v ? { id, name: v.name, amt: String(v.amt), freq: v.freq, next: v.next, cat: v.cat } : { id: null, name: '', amt: '', freq: 'monthly', next: s.today, cat: s.lastCat };
+    s.sheet = 'sub';
+  },
+  saveSub(s: State) {
+    const e = s.sb!, amt = r2(parseFloat(String(e.amt).replace(/[$,]/g, ''))), name = e.name.trim();
+    if (!name || !(amt > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(e.next) || (!e.id && e.next < s.today)) return;
+    s.subs = s.subs || [];
+    const v = { name, amt, freq: e.freq, next: e.next, cat: e.cat };
+    if (e.id) Object.assign(s.subs.find((x) => x.id === e.id)!, v); else s.subs.push({ id: 's' + s.seq++, ...v });
+    s.sb = null; s.sheet = null;
+    s.toast = { t: 'Saved · next charge ' + D.wdm(v.next) };
+    chargeSubs(s);
+  },
+  delSub(s: State) {
+    const e = s.sb!;
+    s.subs = (s.subs || []).filter((x) => x.id !== e.id);
+    s.sb = null; s.sheet = null;
+    s.toast = { t: 'Removed ' + e.name };
+  },
   setNicotine(s: State, on: boolean) {
     s.nicotineOn = on;
     if (!on && s.view && s.view.k === 'wean') { s.view = null; s.tab = 'goals'; }
@@ -331,6 +352,31 @@ export function dueFromChip(today: string, chip: 'none' | 'tom' | 'week' | 'next
   return null;
 }
 
+const SUB_STEP: Record<Sub['freq'], D.Sched> = { weekly: 'weekly', monthly: 'monthly', yearly: 'yearly' };
+export const subStep = (iso: string, f: Sub['freq']) => D.step(iso, SUB_STEP[f]);
+/** Average cost a month. */
+export const subMonthly = (v: Sub) => v.amt * ({ weekly: 52 / 12, monthly: 1, yearly: 1 / 12 }[v.freq]);
+
+/** Logs every subscription charge that has come due, including any missed while the app was closed. */
+export function chargeSubs(s: State) {
+  let n = 0, total = 0;
+  for (const v of s.subs || []) {
+    let k = 0;
+    while (v.next <= s.today && k < 60) {
+      s.expenses.unshift({ id: 'x' + s.seq++, amt: v.amt, cat: v.cat, note: v.name, date: v.next, per: s.period.id, src: 'sub' });
+      n++; total = r2(total + v.amt); k++;
+      v.next = subStep(v.next, v.freq);
+    }
+  }
+  if (n) s.toast = { t: n === 1 ? `Subscription logged · ${usd(total)}` : `${n} subscription charges logged · ${usd(total)}`, id: Date.now() + Math.random() };
+}
+
+/** Everything that happens when a new day starts: subscription charges, then payday. */
+export function catchUp(s: State) {
+  chargeSubs(s);
+  checkPayday(s);
+}
+
 /** When payday arrives, Today shows the paycheck card. */
 export function checkPayday(s: State) {
   if (!s.payPending && s.incomes.length && s.today >= s.incomes[0].next) s.payPending = true;
@@ -341,7 +387,7 @@ export const DEMOS = ['today', 'tasks', 'money', 'goals', 'library', 'add', 'np'
 
 export function initial(today: string): State {
   const s: State = { ...emptyData(today), ...freshUI(today) };
-  checkPayday(s);
+  catchUp(s);
   return s;
 }
 

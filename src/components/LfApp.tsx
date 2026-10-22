@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clone } from '@/lib/format';
-import { checkPayday, money } from '@/lib/logic';
+import { catchUp, money } from '@/lib/logic';
 import type { State, Tab } from '@/lib/types';
 import { Sheets } from './sheets';
 import { Goals, Library, Money, Tasks, Today } from './tabs';
 import { Ctx, Lens, LensButton, type LfCtx } from './ui';
-import { GoalView, ProjectView, ReviewView, SetupView, WeanView } from './views';
+import { GoalView, ProjectView, ReviewView, SetupView, SubsView, WeanView } from './views';
 
 export type TimeOfDay = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
@@ -58,7 +58,7 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }
   // A new "today" from outside (midnight, app resumed) flows in without touching anything else.
   useEffect(() => {
     if (initial.today !== s.today && initial.today > s.today) {
-      upd((x) => { x.today = initial.today; checkPayday(x); });
+      upd((x) => { x.today = initial.today; catchUp(x); });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.today]);
@@ -152,6 +152,7 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo }
         {v?.k === 'wean' && <WeanView />}
         {v?.k === 'review' && <ReviewView />}
         {v?.k === 'setup' && <SetupView />}
+        {v?.k === 'subs' && <SubsView />}
 
         {v?.k !== 'review' && (
           <nav style={{ position: 'absolute', left: 14, right: 14, bottom: 'var(--bb)', height: 62, display: 'flex', gap: 10, zIndex: 20 }}>

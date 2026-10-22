@@ -2,7 +2,7 @@
 
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, gi, idleDays, limitOn, nextP, nicotineOn, phaseInfo, pouchesToday, taskRel } from '@/lib/logic';
+import { CATN, R, TIER, gi, idleDays, limitOn, nextP, nicotineOn, phaseInfo, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
 import type { State } from '@/lib/types';
 import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
@@ -310,6 +310,10 @@ export function Money() {
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Income and bills</span><span className="cap">{src ? 'PAY ' + usd(src.amt, 0) + ' ' + D.SL[src.sched] + ' · ' + s.billsDef.length + ' BILLS' : 'SET UP YOUR PAY AND BILLS'}</span></span>
             <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
           </button>
+          <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'subs' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '8px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Subscriptions</span><span className="cap">{(s.subs || []).length ? `${(s.subs || []).length} · ${usd(sum(s.subs || [], subMonthly), 0)} / MO · LOGGED AUTOMATICALLY` : 'RECURRING CHARGES, LOGGED AUTOMATICALLY'}</span></span>
+            <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
+          </button>
           <Sec l="EXPENSES" r={m.exp.length} />
           <div className="pane list">
             {m.exp.map((e, i) => (
@@ -318,7 +322,7 @@ export function Money() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
                   <span style={{ fontSize: 15, fontWeight: 500 }}>{e.note}</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="cap">{U(D.dm(e.date)) + (e.proj ? ' · ' + U(e.proj) : '')}</span>
+                    <span className="cap">{U(D.dm(e.date)) + (e.proj ? ' · ' + U(e.proj) : '') + (e.src === 'sub' ? ' · SUBSCRIPTION' : '')}</span>
                     {e.goal && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 20, padding: '0 8px', borderRadius: 10, boxShadow: 'inset 0 0 0 1px var(--ink3)', font: '600 9.5px/1 var(--f-mono)', letterSpacing: '.06em' }}><span className="dia" style={{ width: 5, height: 5 }} />{U(gName(e.goal))}</span>}
                     {e.cat && <span style={{ fontSize: 12, color: 'var(--ink2)' }}>{CATN[e.cat]}</span>}
                   </span>
