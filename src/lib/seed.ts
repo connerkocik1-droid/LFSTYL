@@ -102,8 +102,8 @@ export const freshUI = (today: string): UI => ({
   draft: { amt: '', cat: null, note: '', y: false },
   np: { name: '', tier: 'P', mode: 'skip', goal: null, gName: '', gTarget: '' },
   st: { mode: 'project', kind: 'action', title: '', est: '', forA: null, cat: 'house', due: 'none', tier: 'P' },
-  pr: null, dn: null, pl: null, rv: null, ed: null, ph: null, sb: null, gd: null, cd: null, xe: null, xd: null, ie: null, tb: null, td: null, pd: null, wd: null,
+  pr: null, dn: null, pl: null, rv: null, ed: null, ph: null, sb: null, gd: null, cd: null, xe: null, xd: null, ie: null, tb: null, td: null, pd: null, wd: null, dd: null, unlocked: false,
   moff: 0, ftier: 'all', fdone: false, lib: 'docs', drag: null,
 });
 
-export const DATA_KEYS: (keyof Data)[] = ['period', 'incomes', 'billsDef', 'subs', 'plan', 'catNames', 'history', 'expenses', 'goals', 'projects', 'tasks', 'pouchLog', 'phases', 'weighIns', 'weightTarget', 'nicotineOn', 'payPending', 'pendingDone', 'boost', 'lastCat', 'seq'];
+export const DATA_KEYS: (keyof Data)[] = ['period', 'incomes', 'billsDef', 'subs', 'plan', 'catNames', 'docs', 'history', 'expenses', 'goals', 'projects', 'tasks', 'pouchLog', 'phases', 'weighIns', 'weightTarget', 'nicotineOn', 'payPending', 'pendingDone', 'boost', 'lastCat', 'seq'];

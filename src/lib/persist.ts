@@ -89,3 +89,31 @@ export async function saveRemote(sb: SupabaseClient, token: string, v: Saved, ba
   const r = data as { ok: boolean; conflict?: boolean; updated_at?: string };
   return r.ok ? { ok: true, at: new Date(r.updated_at!).getTime() } : { ok: false, conflict: !!r.conflict };
 }
+
+// ---------------------------------------------------------------- Library files
+
+export interface FileApi {
+  put: (id: string, mime: string, body: string) => Promise<{ ok: boolean; error?: string }>;
+  get: (id: string) => Promise<{ ok: boolean; mime?: string; body?: string; error?: string }>;
+  remove: (id: string) => Promise<void>;
+  /** Checks the account PIN again, for the locked Logins folder. */
+  checkPin: (pin: string) => Promise<boolean>;
+}
+
+export function fileApi(sb: SupabaseClient, sess: Session): FileApi {
+  const call = async (fn: string, args: Record<string, unknown>) => {
+    const { data, error } = await sb.rpc(fn, { token: sess.token, ...args });
+    if (error) return { ok: false, error: "Can't reach the server. Check your connection." };
+    return data as { ok: boolean; error?: string; mime?: string; body?: string };
+  };
+  return {
+    put: (id, mime, body) => call('lfstyl_file_put', { id, mime, body }),
+    get: (id) => call('lfstyl_file_get', { id }),
+    remove: async (id) => { await call('lfstyl_file_remove', { id }); },
+    checkPin: async (pin) => {
+      const sp = sess.name.indexOf(' ');
+      const r = await signIn(sp > 0 ? sess.name.slice(0, sp) : sess.name, sp > 0 ? sess.name.slice(sp + 1) : '', pin);
+      return r.ok;
+    },
+  };
+}

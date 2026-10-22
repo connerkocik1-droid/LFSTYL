@@ -2,6 +2,7 @@
 
 import { createContext, useContext, type CSSProperties, type ReactNode } from 'react';
 import { R, type Money } from '@/lib/logic';
+import type { FileApi } from '@/lib/persist';
 import type { State } from '@/lib/types';
 
 export interface LfCtx {
@@ -18,6 +19,8 @@ export interface LfCtx {
   /** The signed-in account's name, when there is one. */
   account?: string;
   signOut?: () => void;
+  /** Library file storage for the signed-in account (absent in demo and device-only mode). */
+  files?: FileApi;
 }
 
 export const Ctx = createContext<LfCtx | null>(null);

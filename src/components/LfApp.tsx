@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { clone } from '@/lib/format';
 import { R, catchUp, money, pouchesToday } from '@/lib/logic';
+import type { FileApi } from '@/lib/persist';
 import type { State, Tab } from '@/lib/types';
 import { Sheets } from './sheets';
 import { Goals, Library, Money, Tasks, Today } from './tabs';
 import { Ctx, Lens, LensButton, type LfCtx } from './ui';
-import { GoalView, PlanView, ProjectView, ReviewView, SettingsView, SetupView, SubsView, WeanView, WeightView } from './views';
+import { DocView, FolderView, GoalView, PlanView, ProjectView, ReviewView, SettingsView, SetupView, SubsView, WeanView, WeightView } from './views';
 
 export type TimeOfDay = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
@@ -35,13 +36,14 @@ export function Background({ dark, health, time, drift }: { dark: boolean; healt
 
 const TABS: [Tab, string][] = [['today', 'TODAY'], ['tasks', 'TASKS'], ['money', 'MONEY'], ['goals', 'GOALS'], ['library', 'LIBRARY']];
 
-export default function LfApp({ initial, dark, time, drift, onChange, scrollTo, account, onSignOut, action }: {
+export default function LfApp({ initial, dark, time, drift, onChange, scrollTo, account, onSignOut, action, files }: {
   initial: State; dark: boolean; time: TimeOfDay; drift: boolean;
   onChange?: (s: State) => void;
   account?: string;
   onSignOut?: () => void;
   /** Opened from a shortcut link (?do=…): start that action. */
   action?: string | null;
+  files?: FileApi;
   /** Start scrolled down this far (demo screens). */
   scrollTo?: number;
 }) {
@@ -148,7 +150,7 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo, 
     el.style.setProperty('--ty', (((e.clientY - r.top) / r.height) * 2 - 1).toFixed(3));
   };
 
-  const ctx: LfCtx = { s, m, upd, patch, dark, shown, startDrag, account, signOut: onSignOut };
+  const ctx: LfCtx = { s, m, upd, patch, dark, shown, startDrag, account, signOut: onSignOut, files };
   const v = s.view;
   const t = s.toast;
 
@@ -171,6 +173,8 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo, 
         {v?.k === 'plan' && <PlanView />}
         {v?.k === 'weight' && <WeightView />}
         {v?.k === 'settings' && <SettingsView />}
+        {v?.k === 'folder' && <FolderView name={v.name} />}
+        {v?.k === 'doc' && <DocView key={v.id} id={v.id} />}
 
         {v?.k !== 'review' && (
           <nav style={{ position: 'absolute', left: 14, right: 14, bottom: 'var(--bb)', height: 62, display: 'flex', gap: 10, zIndex: 20 }}>
