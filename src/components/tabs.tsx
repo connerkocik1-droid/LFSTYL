@@ -321,7 +321,7 @@ export function Money() {
           <Sec l="EXPENSES" r={m.exp.length} />
           <div className="pane list">
             {m.exp.map((e, i) => (
-              <div key={e.id} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, minHeight: 60, padding: '10px 16px 10px 18px' }}>
+              <div key={e.id} role="button" aria-label={`${e.note}, ${usd(e.amt)}`} onClick={() => upd((x) => { x.xe = e.id; x.sheet = 'exp'; })} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, minHeight: 60, padding: '10px 16px 10px 18px', cursor: 'pointer' }}>
                 {i > 0 && <div className="sep" />}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
                   <span style={{ fontSize: 15, fontWeight: 500 }}>{e.note}</span>

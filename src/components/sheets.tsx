@@ -605,11 +605,38 @@ function CatSheet() {
   );
 }
 
+// ---------------------------------------------------------------- Expense
+
+function ExpSheet() {
+  const { s, upd } = useLf();
+  const e = s.expenses.find((x) => x.id === s.xe);
+  if (!e) return null;
+  const goal = e.goal ? s.goals.find((g) => g.id === e.goal) : null;
+  const from = goal ? goal.name : e.cat ? catName(s, e.cat) : '';
+  return (
+    <Sheet>
+      <span className="lbl">EXPENSE · {U(D.wdm(e.date))}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <span className="disp scan" style={{ fontSize: 64, lineHeight: 0.8 }}>{usd(e.amt)}</span>
+        <span style={{ fontSize: 15, fontWeight: 500 }}>{e.note}</span>
+        <span className="cap">{[from && 'FROM ' + U(from), e.src === 'sub' && 'SUBSCRIPTION', e.src === 'buy' && 'BUY STEP · ' + U(e.proj || '')].filter(Boolean).join(' · ')}</span>
+      </div>
+      <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>
+        {e.src === 'buy' ? 'Deleting it puts the money back and marks the buy step as not bought.' : e.src === 'sub' ? "Deleting it puts the money back. The subscription itself stays; delete it under Subscriptions to stop future charges." : 'Deleting it puts the money back where it came from.'}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr', gap: 10 }}>
+        <button className="btn-fill" onClick={() => upd((x) => { x.xe = null; x.sheet = null; })} style={{ height: 54, borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Keep</button>
+        <button className="btn" onClick={() => upd((x) => R.delExpense(x, e.id))}>Delete expense</button>
+      </div>
+    </Sheet>
+  );
+}
+
 export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -626,6 +653,7 @@ export function Sheets() {
       {sh === 'sub' && s.sb && <SubSheet />}
       {sh === 'goal' && s.gd && <GoalSheet />}
       {sh === 'cat' && s.cd && <CatSheet />}
+      {sh === 'exp' && s.xe && <ExpSheet />}
     </>
   );
 }

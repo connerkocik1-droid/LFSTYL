@@ -389,6 +389,17 @@ export const R = {
     }
     s.gd = null; s.sheet = null;
   },
+  /** Deletes an expense. A bought buy step goes back to unbought so its money isn't counted twice. */
+  delExpense(s: State, id: string) {
+    const e = s.expenses.find((x) => x.id === id);
+    if (!e) return;
+    if (e.src === 'buy') {
+      for (const p of s.projects) for (const g of p.groups) if (g.buy && g.buy.done && g.buy.title === e.note && p.name === e.proj) { g.buy.done = false; g.buy.actual = null; }
+    }
+    s.expenses = s.expenses.filter((x) => x.id !== id);
+    s.xe = null; s.sheet = null;
+    s.toast = { t: `Deleted ${e.note} · ${usd(e.amt)}` };
+  },
   openCat(s: State, id: string | null) {
     s.cd = id ? { id, name: catName(s, id), amt: String(planCat(s, id) || '') } : { id: null, name: '', amt: '' };
     s.sheet = 'cat';
