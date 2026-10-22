@@ -88,7 +88,7 @@ export const seedData = (): Data => ({
 export const emptyData = (today: string): Data => ({
   period: { id: 'p0', label: 'FROM ' + dmU(today), start: today, end: today, pay: 0, extra: 0, bills: [],
     cats: (['groc', 'gas', 'eat', 'house', 'fun'] as const).map((id) => ({ id, alloc: 0, roll: 0 })), goals: [] },
-  incomes: [], billsDef: [], history: [], expenses: [], goals: [], projects: [], tasks: [],
+  incomes: [], billsDef: [], subs: [], history: [], expenses: [], goals: [], projects: [], tasks: [],
   pouchLog: {}, phases: [], weighIns: [], weightTarget: 0, nicotineOn: true,
   payPending: false, pendingDone: null, boost: {}, lastCat: 'groc', seq: 100,
 });
@@ -102,8 +102,8 @@ export const freshUI = (today: string): UI => ({
   draft: { amt: '', cat: null, note: '', y: false },
   np: { name: '', tier: 'P', mode: 'skip', goal: null, gName: '', gTarget: '' },
   st: { mode: 'project', kind: 'action', title: '', est: '', forA: null, cat: 'house', due: 'none', tier: 'P' },
-  pr: null, dn: null, pl: null, rv: null, ed: null, ph: null,
+  pr: null, dn: null, pl: null, rv: null, ed: null, ph: null, sb: null,
   moff: 0, ftier: 'all', fdone: false, lib: 'docs', drag: null,
 });
 
-export const DATA_KEYS: (keyof Data)[] = ['period', 'incomes', 'billsDef', 'history', 'expenses', 'goals', 'projects', 'tasks', 'pouchLog', 'phases', 'weighIns', 'weightTarget', 'nicotineOn', 'payPending', 'pendingDone', 'boost', 'lastCat', 'seq'];
+export const DATA_KEYS: (keyof Data)[] = ['period', 'incomes', 'billsDef', 'subs', 'history', 'expenses', 'goals', 'projects', 'tasks', 'pouchLog', 'phases', 'weighIns', 'weightTarget', 'nicotineOn', 'payPending', 'pendingDone', 'boost', 'lastCat', 'seq'];

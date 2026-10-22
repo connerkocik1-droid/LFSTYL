@@ -20,6 +20,9 @@ export interface Period {
 export interface Income { id: string; name: string; amt: number; sched: Sched; next: string }
 export interface BillDef { id: string; name: string; amt: number; freq: Sched; due: string }
 
+/** A recurring expense. Each charge is logged as an expense on its date. */
+export interface Sub { id: string; name: string; amt: number; freq: 'weekly' | 'monthly' | 'yearly'; next: string; cat: CatId }
+
 export interface PastPeriod {
   label: string;
   pay: number;
@@ -39,7 +42,7 @@ export interface Expense {
   proj?: string;
   date: string;
   per: string;
-  src?: 'buy';
+  src?: 'buy' | 'sub';
 }
 
 /** [date, amount, label] — label defaults to "Paycheck contribution". */
@@ -73,6 +76,8 @@ export interface Data {
   period: Period;
   incomes: Income[];
   billsDef: BillDef[];
+  /** Missing in saves from before subscriptions existed. */
+  subs?: Sub[];
   history: PastPeriod[];
   expenses: Expense[];
   goals: Goal[];
@@ -97,8 +102,9 @@ export type View =
   | { k: 'goal'; id: string; from?: View | null }
   | { k: 'wean'; from?: View | null }
   | { k: 'review'; from?: View | null }
-  | { k: 'setup'; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase';
+  | { k: 'setup'; from?: View | null }
+  | { k: 'subs'; from?: View | null };
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -111,6 +117,7 @@ export interface ReviewDraft { cats: Partial<Record<CatId, number>>; goals: Reco
 export interface EdDraft { kind: 'inc' | 'bill'; id: string | null; name: string; amt: string; sched: Sched; date: string }
 /** idx is the phase being edited, or null for a new one. */
 export interface PhaseDraft { idx: number | null; start: string; end: string; limit: string; mg: string }
+export interface SubDraft { id: string | null; name: string; amt: string; freq: Sub['freq']; next: string; cat: CatId }
 export interface Drag { pid: string; from: number; to: number; dy: number; h: number }
 
 /** Screen state that is not saved. */
@@ -129,6 +136,7 @@ export interface UI {
   rv: ReviewDraft | null;
   ed: EdDraft | null;
   ph: PhaseDraft | null;
+  sb: SubDraft | null;
   moff: number;
   ftier: 'all' | Tier;
   fdone: boolean;

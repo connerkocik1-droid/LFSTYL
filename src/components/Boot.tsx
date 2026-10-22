@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { localToday } from '@/lib/dates';
-import { DEMOS, buildDemo, checkPayday } from '@/lib/logic';
+import { DEMOS, buildDemo, catchUp } from '@/lib/logic';
 import { loadLocal, loadRemote, loadSession, pickData, saveLocal, saveRemote, saveSession, signIn, signUp, supabase, type Saved, type Session } from '@/lib/persist';
 import { emptyData, freshUI } from '@/lib/seed';
 import type { State } from '@/lib/types';
@@ -39,7 +39,8 @@ function useClock() {
 
 const fromSaved = (v: Saved | null, today: string): State => {
   const s: State = { ...(v ? v.data : emptyData(today)), ...freshUI(today) };
-  checkPayday(s);
+  if (!s.subs) s.subs = [];
+  catchUp(s);
   return s;
 };
 

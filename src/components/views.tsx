@@ -2,7 +2,7 @@
 
 import * as D from '@/lib/dates';
 import { r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, R, TIER, gi, nextP, phaseInfo, pouchesToday, rvUn } from '@/lib/logic';
+import { CATN, R, TIER, gi, nextP, phaseInfo, pouchesToday, rvUn, subMonthly, subStep } from '@/lib/logic';
 import type { View } from '@/lib/types';
 import { BillList, Pips, PouchNum, scrollProps, useDays14 } from './tabs';
 import { Check, Hero, Lens, Sec, Switch, useLf } from './ui';
@@ -340,6 +340,45 @@ export function SetupView() {
           </button>
         ))}
         {!s.billsDef.length && <div style={{ padding: '18px', fontSize: 14, color: 'var(--ink2)' }}>No bills yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Subscriptions
+
+export function SubsView() {
+  const { s, upd } = useLf();
+  const subs = (s.subs || []).slice().sort((a, b) => (a.next < b.next ? -1 : 1));
+  const horizon = D.add(s.today, 30);
+  let soon = 0, soonN = 0;
+  subs.forEach((v) => { let d = v.next, k = 0; while (d < horizon && k < 60) { soon += v.amt; soonN++; d = subStep(d, v.freq); k++; } });
+  const mo = sum(subs, subMonthly);
+  const rowBtn = { position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', minHeight: 62, padding: '10px 16px 10px 18px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' } as const;
+  const FREQ = { weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' };
+  return (
+    <div className="screen push" {...scrollProps}>
+      <Back />
+      <div className="v-head"><div className="t">Subscriptions</div><div style={{ marginTop: 10, font: '500 9.5px/1.5 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)', textWrap: 'pretty' }}>EACH CHARGE IS LOGGED AS AN EXPENSE ON ITS DATE, OUT OF THE CATEGORY YOU PICK.</div></div>
+      <div className="pane mx" style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10 }}>
+        {[['A MONTH', u0(r2(mo))], ['A YEAR', u0(r2(mo * 12))], ['NEXT 30 DAYS', u0(r2(soon))]].map(([l, v]) => (
+          <div key={l} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><span style={{ font: '500 9px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' }}>{l}</span><span className="disp" style={{ fontSize: 30, lineHeight: 0.85 }}>{v}</span></div>
+        ))}
+        <span style={{ gridColumn: 'span 3', font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: 'var(--ink3)' }}>{soonN} {soonN === 1 ? 'CHARGE' : 'CHARGES'} IN THE NEXT 30 DAYS</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '20px 0 4px' }}>
+        <span className="lbl">YOUR SUBSCRIPTIONS</span>
+        <button onClick={() => upd((x) => R.openSub(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ ADD</button>
+      </div>
+      <div className="pane list">
+        {subs.map((v, k) => (
+          <button key={v.id} style={rowBtn} onClick={() => upd((x) => R.openSub(x, v.id))}>
+            {k > 0 && <span className="sep" />}
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}><span style={{ font: '500 15px/1.2 var(--f-text)' }}>{v.name}</span><span className="cap">{FREQ[v.freq] + ' · NEXT ' + U(D.dm(v.next)) + ' · ' + U(CATN[v.cat])}</span></span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}><span style={{ font: '600 16px/1 var(--f-text)' }}>{usd(v.amt)}</span><span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span></span>
+          </button>
+        ))}
+        {!subs.length && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No subscriptions yet. Tap + ADD for things like streaming, apps or memberships.</div>}
       </div>
     </div>
   );
