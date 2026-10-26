@@ -47,9 +47,13 @@ export function gi(s: State, g: Goal) {
 
 /** The next budget period, built from the income and bill settings. Null until an income source is set up. */
 export function nextP(s: State) {
+  return s.incomes[0] ? periodFrom(s, s.incomes[0].next) : null;
+}
+
+/** The budget period starting on a pay date, built from the income and bill settings. */
+export function periodFrom(s: State, start: string) {
   const src = s.incomes[0];
-  if (!src) return null;
-  const start = src.next, nxt = D.step(start, src.sched), end = D.add(nxt, -1);
+  const nxt = D.step(start, src.sched), end = D.add(nxt, -1);
   const occ = (from: string, k: D.Sched, a: string, b: string) => {
     const out: string[] = [];
     let d = from, n = 0;
@@ -64,6 +68,12 @@ export function nextP(s: State) {
     label: U(sameM ? D.p(start).getUTCDate() + ' – ' + D.dm(end) : D.dm(start) + ' – ' + D.dm(end)),
     range: U(D.wdm(start) + ' – ' + D.wdm(end)),
   };
+}
+
+/** What a future paycheck has left after its bills, the budget plan's items and goalsT going to goals. */
+export function paycheckLeft(s: State, start: string, goalsT: number) {
+  const n = periodFrom(s, start);
+  return r2(n.pay - sum(n.bills, (b) => b.a) - sum(s.period.cats, (c) => planCat(s, c.id)) - goalsT);
 }
 
 export function rvUn(s: State) {
@@ -831,7 +841,7 @@ export function buildDemo(start: string): State {
     case 'money-new': paid(); s.tab = 'money'; break;
     case 'goal': s.tab = 'goals'; s.view = { k: 'goal', id: 'tires' }; break;
     case 'goal-card': paid(); break;
-    case 'installments': paid(); s.tab = 'goals'; s.view = { k: 'installments' }; break;
+    case 'installments': paid(); s.tab = 'goals'; break;
     case 'done1': paid(); R.openDone(s, s.pendingDone); break;
     case 'done2': paid(); R.openDone(s, s.pendingDone); s.dn!.stage = 2; s.dn!.to = 'g:roth'; break;
     case 'expense': s.sheet = 'expense'; Object.assign(s.draft, { amt: '12.50', cat: 'eat', note: 'Lunch with Sam' }); break;
