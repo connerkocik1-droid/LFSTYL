@@ -550,7 +550,7 @@ function GoalSheet() {
           {e.mode === 'pace' && canPace && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={fieldL}>PAYCHECKS TO GET THERE</span><span style={{ fontSize: 13, color: 'var(--ink2)' }}>{n >= 1 ? `Last one ${D.wdm(days[days.length - 1])}` : 'At least 1'}</span></span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={fieldL}>PAYCHECKS TO GET THERE</span><span style={{ fontSize: 13, color: 'var(--ink2)' }}>{n >= 1 ? `Last one ${D.wdmy(days[days.length - 1])}` : 'At least 1'}</span></span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <button aria-label="Fewer paychecks" style={stepBtn} onClick={() => stepN(-1)}>−</button>
                   <input className="field" value={e.n} onChange={(ev) => { const v = ev.target.value.replace(/\D/g, ''); patch((x) => ({ gd: { ...x.gd!, n: v } })); }} inputMode="numeric" aria-label="Paychecks" style={{ width: 62, height: 44, padding: 0, textAlign: 'center', font: '600 16px/1 var(--f-text)' }} />
@@ -559,14 +559,14 @@ function GoalSheet() {
               </div>
               <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}><span className="disp" style={{ fontSize: 34, lineHeight: 0.85 }}>{usd(pacePer, 0)}</span><span style={{ font: '600 10px/1 var(--f-mono)', letterSpacing: '.06em' }}>A PAYCHECK · {n} {n === 1 ? 'PAYCHECK' : 'PAYCHECKS'}</span></span>
-                <span style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>Recalculated every paycheck from what&apos;s left, so extra money or a skipped paycheck spreads over the rest automatically.</span>
+                <span style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>Recalculated every paycheck from what&apos;s left, so extra money or a skipped paycheck spreads over the rest automatically. Set any single installment under Goals → Installments.</span>
               </div>
             </>
           )}
           {e.mode === 'fixed' && (
             <>
               {money('EACH PAYCHECK', e.per, 'per')}
-              {per > 0 && rem > 0 && canPace && <span className="cap8">REACHED IN {fixedN} {fixedN === 1 ? 'PAYCHECK' : 'PAYCHECKS'} · {U(D.wdm(paydays(s, Math.min(fixedN, 520))[Math.min(fixedN, 520) - 1]))}</span>}
+              {per > 0 && rem > 0 && canPace && <span className="cap8">REACHED IN {fixedN} {fixedN === 1 ? 'PAYCHECK' : 'PAYCHECKS'} · {U(D.wdmy(paydays(s, Math.min(fixedN, 520))[Math.min(fixedN, 520) - 1]))}</span>}
             </>
           )}
         </>

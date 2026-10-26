@@ -50,6 +50,12 @@ export const dm = (iso: string) => {
 /** "Wed 21 Oct" */
 export const wdm = (iso: string) => WD[p(iso).getUTCDay()] + ' ' + dm(iso);
 
+/** "21 Oct 2026" */
+export const dmy = (iso: string) => dm(iso) + ' ' + p(iso).getUTCFullYear();
+
+/** "Wed 21 Oct 2026" */
+export const wdmy = (iso: string) => WD[p(iso).getUTCDay()] + ' ' + dmy(iso);
+
 export const wd = (iso: string) => WD[p(iso).getUTCDay()];
 
 export const dayOfMonth = (iso: string) => p(iso).getUTCDate();
