@@ -167,3 +167,26 @@ input::placeholder { color: var(--ink3); opacity: 1; }
 
 /* ---------- Boot / sign-in ---------- */
 .boot { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px; padding: 0 18px var(--sheetPad); }
+
+/* All goals by paycheck: dates down the side, goals across, scrolls sideways with the date column pinned. */
+.lf { --gt-pin: #1c1a24; }
+.lf.light { --gt-pin: #f4f3f1; }
+.gt-wrap { margin: 0 14px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.gt { border-collapse: separate; border-spacing: 0; min-width: 100%; font: 500 13px/1.2 var(--f-text); color: var(--ink); }
+.gt th, .gt td { padding: 6px 5px; border-top: 1px solid var(--line); text-align: right; vertical-align: middle; white-space: nowrap; }
+.gt thead th { border-top: 0; padding-top: 12px; font: 600 9.5px/1.25 var(--f-mono); letter-spacing: .06em; color: var(--ink2); text-transform: uppercase; }
+.gt thead th button { max-width: 92px; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: right; white-space: normal; cursor: pointer; }
+.gt .gt-d { position: sticky; left: 0; z-index: 1; min-width: 76px; padding-left: 14px; text-align: left; background: var(--gt-pin); }
+.gt td.gt-d b { display: block; font: 600 14px/1 var(--f-text); }
+.gt td.gt-d span { display: block; margin-top: 5px; font: 500 8.5px/1 var(--f-mono); letter-spacing: .06em; color: var(--ink3); }
+.gt .gt-t { padding-right: 14px; min-width: 56px; font-weight: 600; }
+.gt tfoot td { font: 500 10px/1.35 var(--f-mono); letter-spacing: .04em; color: var(--ink2); padding-top: 9px; padding-bottom: 9px; }
+.gt tfoot td.gt-d b { font: 600 10px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); }
+.gt-in { width: 82px; height: 38px; border: 0; outline: 0; border-radius: 11px; padding: 0 9px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: 600 15px/1 var(--f-text); text-align: right; }
+.gt-in:focus { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.gt-in.set { background: var(--fill2); box-shadow: inset 0 0 0 1.5px var(--ink2); }
+.gt-na { display: inline-block; width: 82px; color: var(--ink3); }
+.gt-ok { display: inline-block; width: 82px; font-weight: 600; }
+.gt-paid { display: block; margin: 4px 0 0 auto; padding: 0; border: 0; background: none; color: var(--ink); font: 600 9px/1 var(--f-mono); letter-spacing: .08em; text-decoration: underline; cursor: pointer; }
+.gt-now td:not(.gt-d) { background: var(--fill); }
+.gt-short { color: var(--crit); }
