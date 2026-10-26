@@ -18,7 +18,8 @@ export interface Period {
   extras?: { id: string; amt: number; src: string; date: string }[];
   bills: PeriodBill[];
   cats: PeriodCat[];
-  goals: { id: string; a: number }[];
+  /** a is what each goal got this paycheck; due is the part set aside but not yet marked paid. */
+  goals: { id: string; a: number; due?: number }[];
 }
 
 export interface Income { id: string; name: string; amt: number; sched: Sched; next: string }
@@ -68,6 +69,8 @@ export interface Goal {
   event?: string;
   /** Paced goals spread what's left over the paychecks until dueBy (a pay date), recalculated every paycheck. */
   pace?: { dueBy: string };
+  /** Installment amounts you set yourself, by pay date. Paced goals spread the rest over the other paychecks. */
+  inst?: Record<string, number>;
   status?: 'done';
   doneOn?: string;
   doneTo?: string;
@@ -122,6 +125,7 @@ export type View =
   | { k: 'setup'; from?: View | null }
   | { k: 'subs'; from?: View | null }
   | { k: 'plan'; from?: View | null }
+  | { k: 'installments'; from?: View | null }
   | { k: 'weight'; from?: View | null }
   | { k: 'settings'; from?: View | null }
   | { k: 'folder'; name: Folder; from?: View | null }

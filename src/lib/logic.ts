@@ -91,15 +91,57 @@ export function paychecksLeft(s: State, dueBy: string) {
   return Math.max(1, n);
 }
 
-/** What a goal takes from each paycheck. Paced goals split what's left evenly, in whole dollars. */
-export function goalPer(s: State, g: Goal) {
-  if (g.status === 'done') return 0;
-  if (g.kind === 'save' && g.pace && s.incomes.length) {
-    const rem = r2(g.target - g.saved);
-    return rem > 0 ? Math.ceil(rem / paychecksLeft(s, g.pace.dueBy)) : 0;
+export interface Installment { date: string; amt: number; edited: boolean }
+
+/** A savings goal's upcoming installments, one per paycheck from the next payday, until it's reached.
+ *  Amounts you set stay as set; a paced goal spreads the rest evenly (whole dollars) over its other paychecks.
+ *  This paycheck's unpaid installment counts as on its way, unless lapse (it won't be paid before the review). */
+export function installments(s: State, g: Goal, lapse = false) {
+  const rows: Installment[] = [];
+  const src = s.incomes[0], pg = s.period.goals.find((x) => x.id === g.id), due = lapse ? 0 : r2(pg?.due || 0);
+  const out = { rows, due, finish: null as string | null, freeFrom: null as string | null, short: 0, frees: 0 };
+  if (g.kind !== 'save' || g.status === 'done' || !src) return out;
+  const ov = g.inst || {};
+  let left = r2(Math.max(0, g.target - g.saved - due));
+  if (g.pace) {
+    const dates = paydays(s, paychecksLeft(s, g.pace.dueBy)), free = dates.filter((d) => ov[d] == null);
+    const each = free.length ? Math.ceil(Math.max(0, left - sum(dates.filter((d) => ov[d] != null), (d) => ov[d])) / free.length) : 0;
+    for (const d of dates) {
+      if (left <= 0.004) break;
+      const a = r2(Math.min(ov[d] ?? each, left));
+      rows.push({ date: d, amt: a, edited: ov[d] != null }); left = r2(left - a);
+    }
+  } else {
+    const later = (d: string) => Object.keys(ov).some((k) => k > d);
+    let d = src.next;
+    for (let k = 0; k < 520 && left > 0.004; k++, d = D.step(d, src.sched)) {
+      const a = r2(Math.min(ov[d] ?? g.per, left));
+      if (a <= 0 && ov[d] == null && !later(d)) break;
+      rows.push({ date: d, amt: a, edited: ov[d] != null }); left = r2(left - a);
+    }
   }
+  out.short = left;
+  const last = [...rows].reverse().find((r) => r.amt > 0);
+  if (left <= 0.004) {
+    out.finish = last ? last.date : due > 0 ? s.period.start : null;
+    out.freeFrom = last ? D.step(last.date, src.sched) : due > 0 ? src.next : null;
+  }
+  // What a paycheck gets back when it's done: the usual installment (the most common amount; the last is often a remainder).
+  const amts = rows.filter((r) => r.amt > 0).map((r) => r.amt), count = new Map<number, number>();
+  amts.forEach((a) => count.set(a, (count.get(a) || 0) + 1));
+  out.frees = amts.length ? [...count.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0] : due;
+  return out;
+}
+
+/** What a goal takes from the next paycheck. lapse: as the paycheck review sees it. */
+export function goalPer(s: State, g: Goal, lapse = false) {
+  if (g.status === 'done') return 0;
+  if (g.kind === 'save' && s.incomes.length) return installments(s, g, lapse).rows.find((r) => r.date === s.incomes[0].next)?.amt ?? 0;
   return g.per;
 }
+
+/** This paycheck's installments that are set aside but not marked paid yet. */
+export const dueInstallments = (s: State) => s.period.goals.filter((pg) => (pg.due || 0) > 0.004 && s.goals.some((g) => g.id === pg.id));
 
 /** The per-paycheck amount a finished goal frees up. */
 export const freedPer = (s: State, g: Goal) => goalPer(s, g) || g.per;
@@ -219,7 +261,7 @@ export const R = {
     const bc = s.boost.cats || {}, cats: Partial<Record<CatId, number>> = {}, goals: Record<string, number> = {};
     s.period.cats.forEach((c) => { cats[c.id] = planCat(s, c.id) + (bc[c.id] || 0); });
     s.goals.forEach((g) => {
-      const per = goalPer(s, g);
+      const per = goalPer(s, g, true);
       if (g.kind === 'save' && g.status !== 'done' && per > 0) goals[g.id] = Math.min(per, r2(g.target - g.saved));
       if (g.kind === 'acct' && per > 0) goals[g.id] = per;
     });
@@ -235,16 +277,24 @@ export const R = {
     const un = rvUn(s);
     if (un < 0) return;
     const m = money(s), n = nextP(s)!, rv = s.rv!;
-    s.history.unshift({ label: s.period.label, pay: s.period.pay + s.period.extra, bills: m.billsT, spent: m.spentT, goals: m.goalsT, left: m.left, cats: m.cats.map((c) => [c.name, c.avail, c.spent]) });
+    // Installments never marked paid go back; the goal's plan spreads them over the paychecks left.
+    const paidT = r2(sum(s.period.goals, (pg) => pg.a - (pg.due || 0)));
+    s.history.unshift({ label: s.period.label, pay: s.period.pay + s.period.extra, bills: m.billsT, spent: m.spentT, goals: paidT, left: m.left, cats: m.cats.map((c) => [c.name, c.avail, c.spent]) });
     const lefts: Partial<Record<CatId, number>> = {};
     m.cats.forEach((c) => { lefts[c.id] = c.left; });
     s.period = {
       id: n.id, label: n.label, start: n.start, end: n.end, pay: n.pay, extra: 0, extras: [], bills: n.bills.map((b) => ({ n: b.n, a: b.a, d: b.d })),
       cats: s.period.cats.map((c) => ({ id: c.id, alloc: rv.cats[c.id] || 0, roll: r2(lefts[c.id] || 0) })),
-      goals: Object.keys(rv.goals).filter((id) => rv.goals[id] > 0).map((id) => ({ id, a: rv.goals[id] })),
+      goals: Object.keys(rv.goals).filter((id) => rv.goals[id] > 0).map((id) => {
+        const g = s.goals.find((x) => x.id === id);
+        // Savings installments wait for Paid; a finished goal's amount (savings account) counts right away.
+        if (g && g.kind === 'save') { if (g.pace) g.per = rv.goals[id]; return { id, a: rv.goals[id], due: rv.goals[id] }; }
+        if (g) { g.saved = r2(g.saved + rv.goals[id]); g.hist.unshift([n.start, rv.goals[id]]); }
+        return { id, a: rv.goals[id] };
+      }),
     };
-    s.period.goals.forEach((pg) => { const g = s.goals.find((x) => x.id === pg.id); if (g) { g.saved = r2(g.saved + pg.a); g.hist.unshift([n.start, pg.a]); if (g.pace) g.per = pg.a; } });
     s.incomes.forEach((i) => { let k = 0; while (i.next <= n.end && k < 60) { i.next = D.step(i.next, i.sched); k++; } });
+    s.goals.forEach((g) => { if (g.inst) for (const d of Object.keys(g.inst)) if (d < s.incomes[0].next) delete g.inst[d]; });
     if (s.today < n.start) s.today = n.start;
     Object.assign(s, { boost: {}, payPending: false, view: null, tab: 'today', rv: null, moff: 0 });
     const done = s.goals.find((g) => g.kind === 'save' && g.status !== 'done' && g.saved >= g.target - 0.004);
@@ -264,6 +314,8 @@ export const R = {
       a.per += amt; label = a.name;
     } else if (to.startsWith('g:')) { const t = s.goals.find((x) => x.id === to.slice(2))!; t.per = goalPer(s, t) + amt; delete t.pace; label = t.name; }
     else if (to.startsWith('c:')) { const id = to.slice(2); s.boost.cats = s.boost.cats || {}; s.boost.cats[id] = (s.boost.cats[id] || 0) + amt; label = catName(s, id); }
+    const pg = s.period.goals.find((x) => x.id === g.id);
+    if (pg && pg.due) { pg.a = r2(pg.a - pg.due); pg.due = 0; s.period.goals = s.period.goals.filter((x) => x.a > 0.004); }
     g.status = 'done'; g.doneOn = s.today; g.doneTo = amt > 0 ? `${usd(amt, 0)} A PAYCHECK → ${label.toUpperCase()}` : 'CLOSED'; g.per = 0; delete g.pace;
     s.pendingDone = null; s.dn = null; s.sheet = null;
     s.toast = { t: amt > 0 ? `From next paycheck, ${usd(amt, 0)} goes to ${label}` : `${g.name} closed` };
@@ -450,8 +502,11 @@ export const R = {
       if (to.startsWith('c:')) { const c = s.period.cats.find((x) => x.id === to.slice(2))!; c.alloc = r2(c.alloc - amt); }
       else {
         const pg = s.period.goals.find((x) => x.id === to.slice(2))!, g = s.goals.find((x) => x.id === pg.id);
+        // The unpaid installment goes back first; only the rest comes out of what the goal has saved.
+        const fromDue = Math.min(pg.due || 0, amt), fromSaved = r2(amt - fromDue);
         pg.a = r2(pg.a - amt);
-        if (g) { g.saved = r2(g.saved - amt); g.hist.unshift([s.today, -amt, 'Moved back to Unassigned']); }
+        if (pg.due) pg.due = r2(pg.due - fromDue);
+        if (g && fromSaved > 0) { g.saved = r2(g.saved - fromSaved); g.hist.unshift([s.today, -fromSaved, 'Moved back to Unassigned']); }
       }
       total = r2(total + amt);
     }
@@ -617,6 +672,50 @@ export const R = {
     s.sb = null; s.sheet = null;
     s.toast = { t: 'Removed ' + e.name };
   },
+  /** Marks this paycheck's installment paid: it counts toward the goal now. */
+  payInstallment(s: State, gid: string) {
+    const pg = s.period.goals.find((x) => x.id === gid), g = s.goals.find((x) => x.id === gid);
+    if (!pg || !g || !(pg.due! > 0)) return;
+    const amt = pg.due!;
+    g.saved = r2(g.saved + amt); g.hist.unshift([s.today, amt, 'Installment paid']); pg.due = 0;
+    const rem = r2(g.target - g.saved);
+    s.toast = { t: `${g.name} · ${usd(amt)} paid` + (rem > 0.004 ? ` · ${usd(rem, 0)} to go` : '') };
+    if (g.kind === 'save' && g.status !== 'done' && rem <= 0.004) s.pendingDone = g.id;
+  },
+  /** Pays the next installment now, out of Unassigned. */
+  payNow(s: State, gid: string) {
+    const g = s.goals.find((x) => x.id === gid);
+    if (!g || g.kind !== 'save' || g.status === 'done') return;
+    const amt = installments(s, g).rows.find((r) => r.amt > 0)?.amt || 0;
+    if (!(amt > 0)) return;
+    if (amt > money(s).unassigned + 0.004) { s.toast = { t: `Not enough unassigned · ${usd(money(s).unassigned)} left this paycheck` }; return; }
+    const pg = s.period.goals.find((x) => x.id === gid);
+    if (pg) pg.a = r2(pg.a + amt); else s.period.goals.push({ id: gid, a: amt });
+    g.saved = r2(g.saved + amt); g.hist.unshift([s.today, amt, 'Installment paid early']);
+    s.toast = { t: `${g.name} · ${usd(amt)} paid from Unassigned` };
+    if (g.saved >= g.target - 0.004) s.pendingDone = g.id;
+  },
+  /** Changes this paycheck's unpaid installment. More comes out of Unassigned, less goes back to it. */
+  setDue(s: State, gid: string, v: number) {
+    const pg = s.period.goals.find((x) => x.id === gid);
+    if (!pg || !(pg.due! > 0)) return;
+    const amt = Math.max(0, r2(v)), d = r2(amt - pg.due!);
+    if (d > money(s).unassigned + 0.004) { s.toast = { t: `Not enough unassigned · ${usd(money(s).unassigned)} left this paycheck` }; return; }
+    pg.a = r2(pg.a + d); pg.due = amt;
+    s.period.goals = s.period.goals.filter((x) => x.a > 0.004);
+  },
+  /** Sets one future installment (null puts it back on the automatic amount). */
+  setInstallment(s: State, gid: string, date: string, v: number | null) {
+    const g = s.goals.find((x) => x.id === gid);
+    if (!g) return;
+    g.inst = g.inst || {};
+    if (v == null) delete g.inst[date]; else g.inst[date] = Math.max(0, r2(v));
+  },
+  resetInstallments(s: State, gid: string) {
+    const g = s.goals.find((x) => x.id === gid);
+    if (g) delete g.inst;
+    s.toast = { t: 'Installments back to automatic' };
+  },
   setNicotine(s: State, on: boolean) {
     s.nicotineOn = on;
     if (!on && s.view && s.view.k === 'wean') { s.view = null; s.tab = 'goals'; }
@@ -702,7 +801,7 @@ export function checkPayday(s: State) {
 }
 
 /** Demo screens, matching the design's flow canvas. "Today" is pinned to the sample data's day. */
-export const DEMOS = ['today', 'tasks', 'money', 'goals', 'library', 'add', 'np', 'np-buy', 'np-drag', 'price-unlinked', 'price-linked', 'bought-proj', 'bought', 'paycheck', 'review', 'money-new', 'goal', 'goal-card', 'done1', 'done2', 'expense', 'expense-done', 'income', 'place', 'over', 'wean', 'setup', 'setup-inc', 'setup-bill'] as const;
+export const DEMOS = ['today', 'tasks', 'money', 'goals', 'library', 'add', 'np', 'np-buy', 'np-drag', 'price-unlinked', 'price-linked', 'bought-proj', 'bought', 'paycheck', 'review', 'money-new', 'goal', 'goal-card', 'done1', 'done2', 'expense', 'expense-done', 'income', 'place', 'over', 'wean', 'setup', 'setup-inc', 'setup-bill', 'installments'] as const;
 
 export function initial(today: string): State {
   const s: State = { ...emptyData(today), ...freshUI(today) };
@@ -732,6 +831,7 @@ export function buildDemo(start: string): State {
     case 'money-new': paid(); s.tab = 'money'; break;
     case 'goal': s.tab = 'goals'; s.view = { k: 'goal', id: 'tires' }; break;
     case 'goal-card': paid(); break;
+    case 'installments': paid(); s.tab = 'goals'; s.view = { k: 'installments' }; break;
     case 'done1': paid(); R.openDone(s, s.pendingDone); break;
     case 'done2': paid(); R.openDone(s, s.pendingDone); s.dn!.stage = 2; s.dn!.to = 'g:roth'; break;
     case 'expense': s.sheet = 'expense'; Object.assign(s.draft, { amt: '12.50', cat: 'eat', note: 'Lunch with Sam' }); break;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { R, archivable, catchUp, expensesCsv, chargeSubs, goalPer, initial, money, nextP, paychecksLeft, paydays, rvUn, safeToSpend } from './logic';
+import { R, archivable, catchUp, dueInstallments, expensesCsv, installments, chargeSubs, goalPer, initial, money, nextP, paychecksLeft, paydays, rvUn, safeToSpend } from './logic';
 import { SEED_TODAY, freshUI, seedData } from './seed';
 import type { Goal, State } from './types';
 
@@ -276,10 +276,11 @@ describe('paycheck review', () => {
     expect(s.history[0]).toMatchObject({ label: '13 – 26 OCT', pay: 1840, left: before.left, spent: 322.6 });
     expect(s.period).toMatchObject({ id: 'p2026-10-27', start: '2026-10-27', end: '2026-11-09', pay: 1840, extra: 0 });
     expect(s.period.cats.find((c) => c.id === 'gas')).toEqual({ id: 'gas', alloc: 120, roll: -13.1 });
-    expect(s.goals.find((g) => g.id === 'roth')!.saved).toBe(5520);
+    expect(s.goals.find((g) => g.id === 'roth')!.saved).toBe(5420);
+    expect(s.period.goals).toEqual([{ id: 'roth', a: 100, due: 100 }, { id: 'tires', a: 85, due: 85 }, { id: 'japan', a: 60, due: 60 }]);
     expect(s.incomes[0].next).toBe('2026-11-10');
     expect(s.payPending).toBe(false);
-    expect(s.pendingDone).toBe('tires');
+    expect(s.pendingDone).toBe(null);
     expect(money(s).unassigned).toBe(105);
     expect(money(s).spentT).toBe(0);
   });
@@ -331,5 +332,128 @@ describe('export', () => {
     expect(csv[1]).toBe('2026-10-20,48.10,Gas,"Shell, ""Main St""",,');
     expect(csv[csv.length - 1]).toBe('2026-07-01,5.00,Eating out,Coffee,,');
     expect(csv).toContain('2026-10-15,34.99,,Buy wiper blades,Fix The Car Up,Car repairs');
+  });
+});
+
+describe('installments', () => {
+  /** The sample account just after its 27 Oct paycheck review. */
+  function reviewed() {
+    const s = demo();
+    s.today = '2026-10-27';
+    catchUp(s);
+    R.openReview(s);
+    R.confirmReview(s);
+    s.toast = null;
+    return s;
+  }
+
+  it('counts an installment only once it is marked paid', () => {
+    const s = reviewed();
+    expect(dueInstallments(s).map((x) => x.id)).toEqual(['roth', 'tires', 'japan']);
+    R.payInstallment(s, 'roth');
+    expect(s.goals.find((g) => g.id === 'roth')!.saved).toBe(5520);
+    expect(s.goals.find((g) => g.id === 'roth')!.hist[0]).toEqual(['2026-10-27', 100, 'Installment paid']);
+    expect(dueInstallments(s).map((x) => x.id)).toEqual(['tires', 'japan']);
+    expect(money(s).unassigned).toBe(105);
+    R.payInstallment(s, 'roth');
+    expect(s.goals.find((g) => g.id === 'roth')!.saved).toBe(5520);
+  });
+
+  it('offers to close a goal when its last installment is paid', () => {
+    const s = reviewed();
+    R.payInstallment(s, 'tires');
+    expect(s.pendingDone).toBe('tires');
+  });
+
+  it('lets an unpaid installment lapse at the next review', () => {
+    const s = reviewed();
+    R.payInstallment(s, 'roth');
+    s.today = '2026-11-10';
+    catchUp(s);
+    R.openReview(s);
+    R.confirmReview(s);
+    expect(s.history[0].goals).toBe(100);
+    expect(s.goals.find((g) => g.id === 'japan')!.saved).toBe(1180);
+  });
+
+  it('changes this paycheck\'s installment against Unassigned', () => {
+    const s = reviewed();
+    R.setDue(s, 'japan', 160);
+    expect(s.period.goals.find((x) => x.id === 'japan')).toEqual({ id: 'japan', a: 160, due: 160 });
+    expect(money(s).unassigned).toBe(5);
+    R.setDue(s, 'japan', 200);
+    expect(s.period.goals.find((x) => x.id === 'japan')!.due).toBe(160);
+    R.setDue(s, 'japan', 10);
+    expect(money(s).unassigned).toBe(155);
+  });
+
+  it('takes back the unpaid part first', () => {
+    const s = reviewed();
+    s.tb = { 'g:japan': '60' };
+    R.takeBack(s);
+    expect(s.goals.find((g) => g.id === 'japan')!.saved).toBe(1180);
+    expect(s.period.goals.some((x) => x.id === 'japan')).toBe(false);
+  });
+
+  it('pays the next installment early from Unassigned', () => {
+    const s = paid(), g = goal({ pace: { dueBy: paydays(paid(), 10)[9] } });
+    s.goals.push(g);
+    R.payNow(s, 'trip');
+    expect(g.saved).toBe(1382);
+    expect(money(s).unassigned).toBe(798);
+    expect(goalPer(s, g)).toBe(182); // 1,818 over 10
+  });
+
+  it('refuses to pay early without enough unassigned', () => {
+    const s = paid(), g = goal({ pace: { dueBy: paydays(paid(), 1)[0] } });
+    s.goals.push(g);
+    R.payNow(s, 'trip');
+    expect(g.saved).toBe(1180);
+  });
+
+  it('lists every installment with the finish date and when the money frees up', () => {
+    const s = paid(), g = goal({ target: 1000, saved: 0, pace: { dueBy: paydays(paid(), 3)[2] } });
+    const p = installments(s, g);
+    expect(p.rows.map((r) => [r.date, r.amt])).toEqual([['2026-11-06', 334], ['2026-11-20', 334], ['2026-12-04', 332]]);
+    expect(p.finish).toBe('2026-12-04');
+    expect(p.freeFrom).toBe('2026-12-18');
+    expect(p.frees).toBe(334);
+  });
+
+  it('keeps an installment you set and rebalances a paced goal around it', () => {
+    const s = paid(), g = goal({ target: 1000, saved: 0, pace: { dueBy: paydays(paid(), 3)[2] } });
+    R.setInstallment({ ...s, goals: [g] } as State, 'trip', '2026-11-20', 100);
+    const p = installments(s, g);
+    expect(p.rows.map((r) => [r.amt, r.edited])).toEqual([[450, false], [100, true], [450, false]]);
+    expect(p.frees).toBe(450);
+    expect(goalPer(s, g)).toBe(450);
+  });
+
+  it('moves the finish date of a fixed goal when an installment changes', () => {
+    const s = paid(), g = goal({ target: 300, saved: 0, per: 100 });
+    expect(installments(s, g).finish).toBe('2026-12-04');
+    g.inst = { '2026-11-06': 200 };
+    const p = installments(s, g);
+    expect(p.rows.map((r) => r.amt)).toEqual([200, 100]);
+    expect(p.finish).toBe('2026-11-20');
+  });
+
+  it('counts this paycheck\'s unpaid installment as on its way', () => {
+    const s = paid(), g = goal({ target: 1000, saved: 0, pace: { dueBy: paydays(paid(), 2)[1] } });
+    s.goals.push(g);
+    s.period.goals.push({ id: 'trip', a: 200, due: 200 });
+    expect(installments(s, g).rows.map((r) => r.amt)).toEqual([400, 400]);
+    expect(installments(s, g, true).rows.map((r) => r.amt)).toEqual([500, 500]);
+  });
+
+  it('drops installments you set once their payday has passed', () => {
+    const s = reviewed(), g = s.goals.find((x) => x.id === 'japan')!;
+    g.inst = { '2026-11-10': 80, '2026-11-24': 90 };
+    s.today = '2026-11-10';
+    catchUp(s);
+    R.openReview(s);
+    expect(s.rv!.goals.japan).toBe(80);
+    R.confirmReview(s);
+    expect(g.inst).toEqual({ '2026-11-24': 90 });
   });
 });

@@ -2,7 +2,7 @@
 
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, FOLDERS, R, TIER, catName, expiryState, freedPer, safeToSpend, gi, goalPer, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
+import { CATN, FOLDERS, R, TIER, catName, dueInstallments, expiryState, freedPer, safeToSpend, gi, goalPer, installments, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
 import type { Doc, State } from '@/lib/types';
 import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
@@ -55,6 +55,30 @@ function useRecs(): Rec[] {
   return out;
 }
 
+/** This paycheck's installments waiting to be marked paid, each with a Paid button. */
+export function DueList({ style }: { style?: React.CSSProperties }) {
+  const { s, upd } = useLf();
+  const due = dueInstallments(s);
+  if (!due.length) return null;
+  return (
+    <div className="pane list" style={style}>
+      {due.map((pg, i) => {
+        const g = s.goals.find((x) => x.id === pg.id)!;
+        return (
+          <div key={pg.id} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, minHeight: 62, padding: '8px 10px 8px 18px' }}>
+            {i > 0 && <div className="sep" />}
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 15, fontWeight: 500 }}><span className="dia" />{g.name}</span>
+              <span className="cap">{`INSTALLMENT ${usd(pg.due!)} · NOT PAID YET`}</span>
+            </span>
+            <button className="btn" onClick={() => upd((x) => R.payInstallment(x, pg.id))} aria-label={`Mark ${g.name} installment paid`} style={{ width: 'auto', height: 44, padding: '0 18px', borderRadius: 14, font: '600 14px/1 var(--f-text)', flex: 'none' }}>Paid</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Today() {
   const { s, m, upd, shown } = useLf();
   const nx = nextP(s), daysTo = s.incomes.length ? Math.max(0, D.diff(s.incomes[0].next, s.today)) : null;
@@ -79,6 +103,13 @@ export function Today() {
           </div>
           <button className="btn" style={{ height: 52, borderRadius: 16 }} onClick={() => upd((x) => R.openReview(x))}>Review and allocate</button>
         </div>
+      )}
+
+      {dueInstallments(s).length > 0 && (
+        <>
+          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', padding: '0 22px', margin: '0 0 8px' }}><span>INSTALLMENTS DUE</span><button onClick={() => upd((x) => { x.view = { k: 'installments' }; })} style={{ margin: '-14px -12px -14px 0', height: 40, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>ALL →</button></div>
+          <DueList style={{ margin: '0 14px 12px' }} />
+        </>
       )}
 
       {pd && s.sheet !== 'done' && (() => {
@@ -329,8 +360,11 @@ export function Money() {
             {m.p.goals.map((pg, i) => (
               <div key={pg.id} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, padding: '0 16px 0 18px' }}>
                 {i > 0 && <div className="sep" />}
-                <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 15 }}><span className="dia" />{gName(pg.id)}</span>
-                <span style={{ font: '600 15px/1 var(--f-text)' }}>{usd(pg.a)}</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '8px 0' }}><span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 15 }}><span className="dia" />{gName(pg.id)}</span>{(pg.due || 0) > 0 && <span className="cap">{pg.due === pg.a ? 'NOT PAID YET' : `${usd(pg.due!)} NOT PAID YET`}</span>}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ font: '600 15px/1 var(--f-text)' }}>{usd(pg.a)}</span>
+                  {(pg.due || 0) > 0 && <button className="btn" onClick={() => upd((x) => R.payInstallment(x, pg.id))} aria-label={`Mark ${gName(pg.id)} installment paid`} style={{ width: 'auto', height: 36, padding: '0 14px', borderRadius: 12, font: '600 13px/1 var(--f-text)' }}>Paid</button>}
+                </span>
               </div>
             ))}
           </div></>}
@@ -445,7 +479,10 @@ export function Goals() {
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '14px 0 0' }}>
         <span className="lbl">MONEY</span>
-        <button onClick={() => upd((x) => R.openGoal(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ NEW GOAL</button>
+        <span style={{ display: 'flex' }}>
+          {live.some((g) => g.kind === 'save') && <button onClick={() => upd((x) => { x.view = { k: 'installments' }; })} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>INSTALLMENTS</button>}
+          <button onClick={() => upd((x) => R.openGoal(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ NEW GOAL</button>
+        </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 14px' }}>
         {live.map((g) => {
@@ -463,7 +500,7 @@ export function Goals() {
                 </div>
               </div>
               <div className="track"><div style={{ width: `${info.pct}%` }} /></div>
-              <span style={{ fontSize: 12, color: 'var(--ink2)' }}>{g.kind === 'proj' ? `${usd(info.have)} spent of ${usd(g.target, 0)} · funded up front` : `${usd(g.saved, 0)} of ${usd(g.target, 0)} · ${goalPer(s, g) ? usd(goalPer(s, g), 0) + ' a paycheck' : 'no paycheck contribution'}${g.pace && s.incomes.length ? ` · ${paychecksLeft(s, g.pace.dueBy)} left` : ''}`}</span>
+              <span style={{ fontSize: 12, color: 'var(--ink2)' }}>{g.kind === 'proj' ? `${usd(info.have)} spent of ${usd(g.target, 0)} · funded up front` : `${usd(g.saved, 0)} of ${usd(g.target, 0)} · ${goalPer(s, g) ? usd(goalPer(s, g), 0) + ' a paycheck' : 'no paycheck contribution'}${g.pace && s.incomes.length ? ` · ${paychecksLeft(s, g.pace.dueBy)} left` : ''}${(() => { const f = installments(s, g).finish; return f && info.rem > 0 ? ` · done ${D.dmy(f)}` : ''; })()}`}</span>
             </div>
           );
         })}
