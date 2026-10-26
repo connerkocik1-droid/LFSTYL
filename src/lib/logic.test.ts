@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { R, archivable, catchUp, dueInstallments, expensesCsv, installments, chargeSubs, goalPer, initial, money, nextP, paychecksLeft, paydays, rvUn, safeToSpend } from './logic';
+import { r2 } from './format';
+import { R, paycheckLeft, archivable, catchUp, dueInstallments, expensesCsv, installments, chargeSubs, goalPer, initial, money, nextP, paychecksLeft, paydays, rvUn, safeToSpend } from './logic';
 import { SEED_TODAY, freshUI, seedData } from './seed';
 import type { Goal, State } from './types';
 
@@ -455,5 +456,20 @@ describe('installments', () => {
     expect(s.rv!.goals.japan).toBe(80);
     R.confirmReview(s);
     expect(g.inst).toEqual({ '2026-11-24': 90 });
+  });
+});
+
+describe('paycheck left', () => {
+  it('takes bills, the plan and goals from a future paycheck', () => {
+    const s = demo();
+    // 27 Oct paycheck: 1,840 − bills 880 − categories 610 − goals 245
+    expect(paycheckLeft(s, '2026-10-27', 245)).toBe(105);
+    s.plan = { cats: { groc: 300 } };
+    expect(paycheckLeft(s, '2026-10-27', 245)).toBe(65);
+  });
+
+  it('counts the bills in that period only', () => {
+    // 10 Nov – 23 Nov: car payment, internet, insurance, gym, phone = 515
+    expect(paycheckLeft(demo(), '2026-11-10', 0)).toBe(r2(1840 - 515 - 610));
   });
 });

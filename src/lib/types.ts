@@ -125,7 +125,6 @@ export type View =
   | { k: 'setup'; from?: View | null }
   | { k: 'subs'; from?: View | null }
   | { k: 'plan'; from?: View | null }
-  | { k: 'installments'; from?: View | null }
   | { k: 'weight'; from?: View | null }
   | { k: 'settings'; from?: View | null }
   | { k: 'folder'; name: Folder; from?: View | null }
