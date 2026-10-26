@@ -174,7 +174,7 @@ function GoalNow({ g }: { g: Goal }) {
         {due ? <button className="btn" onClick={() => upd((x) => R.payInstallment(x, g.id))} style={{ width: 'auto', height: 44, padding: '0 18px', borderRadius: 14, font: '600 14px/1 var(--f-text)' }}>Paid</button>
           : next && <button className="btn-fill" onClick={() => upd((x) => R.payNow(x, g.id))} style={{ height: 44, padding: '0 14px', borderRadius: 14, font: '600 13.5px/1 var(--f-text)' }}>Pay {usd(next.amt, 0)} now</button>}
       </div>
-      <button onClick={() => upd((x) => { x.view = null; x.tab = 'goals'; })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '12px 4px 0 0', border: 0, borderTop: '1px solid var(--line)', background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+      <button onClick={() => upd((x) => { x.view = null; x.tab = 'money'; })} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '12px 4px 0 0', border: 0, borderTop: '1px solid var(--line)', background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
         <span className="cap" style={{ lineHeight: 1.5 }}>{plan.finish ? `DONE ${U(D.dmy(plan.finish))} · FREES ${usd(plan.frees, 0)} A PAYCHECK FROM ${U(D.dmy(plan.freeFrom!))}` : plan.short > 0.004 ? `${usd(plan.short, 0)} SHORT OF THE TARGET` : 'NO INSTALLMENTS PLANNED'}</span>
         <span style={{ font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.08em', flex: 'none' }}>PLAN →</span>
       </button>
@@ -264,7 +264,7 @@ export function ReviewView() {
         <div style={{ padding: '8px 22px 18px' }}>
           <div className="lbl" style={{ color: 'var(--ink3)' }}>{n.range}</div>
           <Hero v={{ S: '$', D: ps.D, C: ps.C }} d={96} sc={40} style={{ marginTop: 14 }} />
-          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink2)' }}>{n.srcName + (n.extras.length ? ' + ' + n.extras.map((e) => e.n).join(' + ') : '') + (s.plan ? ' · prefilled from your budget plan' : ' · prefilled from last period')}</div>
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink2)' }}>{n.srcName + (n.extras.length ? ' + ' + n.extras.map((e) => e.n).join(' + ') : '') + (s.plan ? ' · prefilled from your budget' : ' · prefilled from last period')}</div>
         </div>
         {dueInstallments(s).length > 0 && (
           <>
@@ -418,67 +418,6 @@ export function SubsView() {
         ))}
         {!subs.length && <div style={{ padding: '18px', fontSize: 14, lineHeight: 1.45, color: 'var(--ink2)' }}>No subscriptions yet. Tap + ADD for things like streaming, apps or memberships.</div>}
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- Budget plan
-
-/** A dollar field that commits when you leave it, so typing "12." isn't cut short. */
-function AmountField({ value, onCommit, label }: { value: number; onCommit: (v: number) => void; label: string }) {
-  const [v, setV] = useState(value ? String(value) : '');
-  useEffect(() => { setV(value ? String(value) : ''); }, [value]);
-  const commit = () => { const n = parseFloat(v.replace(/[$,]/g, '')) || 0; if (n !== value) onCommit(n); };
-  return (
-    <div style={{ position: 'relative', width: 116, flex: 'none' }}>
-      <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', font: '600 15px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
-      <input className="field" aria-label={label} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} placeholder="0" inputMode="decimal" style={{ height: 44, padding: '0 12px 0 24px', textAlign: 'right', font: '600 16px/1 var(--f-text)' }} />
-    </div>
-  );
-}
-
-export function PlanView() {
-  const { s, m, upd } = useLf();
-  const nx = nextP(s), bills = nx ? sum(nx.bills, (b) => b.a) : 0;
-  const goals = s.goals.filter((g) => (g.kind === 'save' || g.kind === 'acct') && g.status !== 'done');
-  const catT = sum(m.cats, (c) => planCat(s, c.id));
-  const goalT = sum(goals, (g) => Math.min(goalPer(s, g), g.kind === 'save' ? Math.max(0, r2(g.target - g.saved)) : Infinity));
-  const un = r2((nx ? nx.pay : 0) - bills - catT - goalT);
-  const differs = m.cats.some((c) => planCat(s, c.id) !== c.alloc);
-  const row = { position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, minHeight: 64, padding: '8px 12px 8px 18px' } as const;
-  return (
-    <div className="screen push" {...scrollProps}>
-      <Back />
-      <div className="v-head"><div className="t">Budget plan</div><div style={{ marginTop: 10, font: '500 9.5px/1.5 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)', textWrap: 'pretty' }}>{nx ? `HOW EACH PAYCHECK IS SPLIT. YOUR REVIEW ON ${U(D.wdm(nx.start))} STARTS FROM THIS.` : 'HOW EACH PAYCHECK IS SPLIT. ADD YOUR PAY UNDER INCOME AND BILLS TO SEE WHAT IS LEFT.'}</div></div>
-      <div className="pane mx" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10 }}>
-          {[['PAY', nx ? u0(nx.pay) : '—'], ['BILLS', u0(bills)], ['UNASSIGNED', nx ? u0(un) : '—']].map(([l, v], i) => (
-            <div key={l} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}><span style={{ font: '500 9px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' }}>{l}</span><span className="disp" style={{ fontSize: 30, lineHeight: 0.85, color: i === 2 && nx && un < 0 ? 'var(--crit)' : undefined }}>{v}</span></div>
-          ))}
-        </div>
-        <span style={{ font: '500 9px/1.4 var(--f-mono)', letterSpacing: '.06em', color: nx && un < 0 ? 'var(--crit)' : 'var(--ink3)' }}>{nx && un < 0 ? `${usd(-un, 0)} MORE THAN THE PAYCHECK · LOWER A CATEGORY OR GOAL` : `CATEGORIES ${usd(catT, 0)} · GOALS ${usd(goalT, 0)} A PAYCHECK`}</span>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '20px 0 4px' }}>
-        <span className="lbl">BUDGET ITEMS · EACH PAYCHECK</span>
-        <button onClick={() => upd((x) => R.openCat(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ ADD ITEM</button>
-      </div>
-      <div className="pane list">
-        {m.cats.map((c, i) => (
-          <div key={c.id} style={row}>
-            {i > 0 && <div className="sep" />}
-            <button onClick={() => upd((x) => R.openCat(x, c.id))} aria-label={`Edit ${c.name}`} style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, flex: 1, padding: 0, border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}><span style={{ fontSize: 15, fontWeight: 500 }}>{c.name} <span style={{ font: '500 13px/1 var(--f-mono)', color: 'var(--ink3)' }}>›</span></span><span className="cap">{`THIS PAYCHECK ${usd(c.alloc, 0)}`}</span></button>
-            <AmountField label={`${c.name} each paycheck`} value={planCat(s, c.id)} onCommit={(v) => upd((x) => R.setPlanCat(x, c.id, v))} />
-          </div>
-        ))}
-        {!m.cats.length && <div style={{ padding: '18px', fontSize: 14, color: 'var(--ink2)' }}>No budget items. Tap + ADD ITEM.</div>}
-      </div>
-      {m.p.pay + m.p.extra > 0 && differs && (
-        <button className="btn-fill" onClick={() => upd((x) => R.applyPlanNow(x))} style={{ width: 'calc(100% - 28px)', margin: '10px 14px 0', height: 50, borderRadius: 16, font: '600 14px/1 var(--f-text)' }}>Use these amounts for this paycheck too</button>
-      )}
-      <button className="btn-fill" onClick={() => upd((x) => { x.view = null; x.tab = 'goals'; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '20px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
-        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Goals · {usd(goalT, 0)} next paycheck</span><span className="cap">{goals.length ? `${goals.length} ${goals.length === 1 ? 'GOAL' : 'GOALS'} · PLAN EACH PAYCHECK ON THE GOALS TAB` : 'ADD A GOAL ON THE GOALS TAB'}</span></span>
-        <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
-      </button>
     </div>
   );
 }

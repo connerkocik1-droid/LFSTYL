@@ -71,6 +71,8 @@ export interface Goal {
   pace?: { dueBy: string };
   /** Installment amounts you set yourself, by pay date. Paced goals spread the rest over the other paychecks. */
   inst?: Record<string, number>;
+  /** Starts taking installments the paycheck after this goal is done. */
+  after?: string;
   status?: 'done';
   doneOn?: string;
   doneTo?: string;
@@ -93,7 +95,7 @@ export interface Data {
   /** Missing in saves from before subscriptions existed. */
   subs?: Sub[];
   /** Standing budget: how much of each paycheck goes to each category. Paycheck reviews start from it. */
-  plan?: { cats: Partial<Record<CatId, number>> };
+  plan?: { cats: Partial<Record<CatId, number>>; byDate?: Record<string, Partial<Record<CatId, number>>> };
   /** Names for categories you added or renamed. */
   catNames?: Record<CatId, string>;
   /** Library documents (missing in older saves). */
@@ -124,12 +126,11 @@ export type View =
   | { k: 'review'; from?: View | null }
   | { k: 'setup'; from?: View | null }
   | { k: 'subs'; from?: View | null }
-  | { k: 'plan'; from?: View | null }
   | { k: 'weight'; from?: View | null }
   | { k: 'settings'; from?: View | null }
   | { k: 'folder'; name: Folder; from?: View | null }
   | { k: 'doc'; id: string; from?: View | null };
-export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp' | 'inc' | 'take' | 'task' | 'proj' | 'weigh' | 'doc' | 'pin';
+export type Sheet = 'add' | 'expense' | 'income' | 'place' | 'np' | 'step' | 'price' | 'done' | 'ed' | 'phase' | 'sub' | 'goal' | 'cat' | 'exp' | 'inc' | 'take' | 'task' | 'proj' | 'weigh' | 'doc' | 'pin' | 'fill';
 
 export interface Toast { t: string; undo?: string; undoTask?: string; id?: number }
 export interface Draft { amt: string; cat: CatId | null; note: string; y: boolean }
@@ -144,8 +145,10 @@ export interface EdDraft { kind: 'inc' | 'bill'; id: string | null; name: string
 /** idx is the phase being edited, or null for a new one. */
 export interface PhaseDraft { idx: number | null; start: string; end: string; limit: string; mg: string }
 export interface SubDraft { id: string | null; name: string; amt: string; freq: Sub['freq']; next: string; cat: CatId }
-export interface GoalDraft { id: string | null; name: string; target: string; saved: string; mode: 'pace' | 'fixed'; n: string; per: string }
-export interface CatDraft { id: string | null; name: string; amt: string }
+export interface GoalDraft { id: string | null; name: string; target: string; saved: string; mode: 'pace' | 'fixed'; n: string; per: string; after: string | null }
+/** Setting one amount for a run of paychecks: a goal's installments or a budget item. forever: and every paycheck after. */
+export interface FillDraft { kind: 'goal' | 'cat'; id: string; amt: string; from: string; n: string; forever: boolean }
+export interface CatDraft { id: string | null; name: string; amt: string; merge?: boolean }
 /** Editing a task, a project action or a project buy step. */
 export interface TaskDraft { kind: 'task' | 'action' | 'buy'; id: string; pid?: string; title: string; tier: Tier; due: string; notes: string; est: string; cat: CatId | null }
 export interface ProjDraft { id: string; name: string; tier: Tier }
@@ -184,6 +187,7 @@ export interface UI {
   /** Weigh-in being entered: weight and date. */
   wd: { w: string; date: string } | null;
   dd: DocDraft | null;
+  fd: FillDraft | null;
   /** The Logins folder was unlocked with the PIN in this visit. */
   unlocked: boolean;
   moff: number;

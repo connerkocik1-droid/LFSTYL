@@ -83,14 +83,14 @@ export const seedData = (): Data => ({
   seq: 100,
 });
 
-/** A brand-new account: nothing but the five budget categories, all at $0. The first period runs
+/** A brand-new account: nothing but the four budget categories (Food, Gas, Fun, Savings), all at $0. The first period runs
  *  open-ended from today until the first income source's pay date. */
 export const emptyData = (today: string): Data => ({
   period: { id: 'p0', label: 'FROM ' + dmU(today), start: today, end: today, pay: 0, extra: 0, bills: [],
-    cats: (['groc', 'gas', 'eat', 'house', 'fun'] as const).map((id) => ({ id, alloc: 0, roll: 0 })), goals: [] },
+    cats: (['food', 'gas', 'fun', 'savings'] as const).map((id) => ({ id, alloc: 0, roll: 0 })), goals: [] },
   incomes: [], billsDef: [], subs: [], history: [], expenses: [], goals: [], projects: [], tasks: [],
   pouchLog: {}, phases: [], weighIns: [], weightTarget: 0, nicotineOn: true,
-  payPending: false, pendingDone: null, boost: {}, lastCat: 'groc', seq: 100,
+  payPending: false, pendingDone: null, boost: {}, lastCat: 'food', seq: 100,
 });
 
 const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -102,7 +102,7 @@ export const freshUI = (today: string): UI => ({
   draft: { amt: '', cat: null, note: '', y: false },
   np: { name: '', tier: 'P', mode: 'skip', goal: null, gName: '', gTarget: '' },
   st: { mode: 'project', kind: 'action', title: '', est: '', forA: null, cat: 'house', due: 'none', tier: 'P' },
-  pr: null, dn: null, pl: null, rv: null, ed: null, ph: null, sb: null, gd: null, cd: null, xe: null, xd: null, ie: null, tb: null, td: null, pd: null, wd: null, dd: null, unlocked: false,
+  pr: null, dn: null, pl: null, rv: null, ed: null, ph: null, sb: null, gd: null, cd: null, xe: null, xd: null, ie: null, tb: null, td: null, pd: null, wd: null, dd: null, fd: null, unlocked: false,
   moff: 0, ftier: 'all', fdone: false, lib: 'docs', drag: null,
 });
 

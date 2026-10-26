@@ -8,7 +8,7 @@ import type { State, Tab } from '@/lib/types';
 import { Sheets } from './sheets';
 import { Goals, Library, Money, Tasks, Today } from './tabs';
 import { Ctx, Lens, LensButton, type LfCtx } from './ui';
-import { DocView, FolderView, GoalView, PlanView, ProjectView, ReviewView, SettingsView, SetupView, SubsView, WeanView, WeightView } from './views';
+import { DocView, FolderView, GoalView, ProjectView, ReviewView, SettingsView, SetupView, SubsView, WeanView, WeightView } from './views';
 
 export type TimeOfDay = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
@@ -172,7 +172,6 @@ export default function LfApp({ initial, dark, time, drift, onChange, scrollTo, 
         {v?.k === 'review' && <ReviewView />}
         {v?.k === 'setup' && <SetupView />}
         {v?.k === 'subs' && <SubsView />}
-        {v?.k === 'plan' && <PlanView />}
         {v?.k === 'weight' && <WeightView />}
         {v?.k === 'settings' && <SettingsView />}
         {v?.k === 'folder' && <FolderView name={v.name} />}

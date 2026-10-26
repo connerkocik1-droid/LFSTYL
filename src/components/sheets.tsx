@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import * as D from '@/lib/dates';
 import { r2, u0, usd } from '@/lib/format';
-import { CATN, FOLDERS, R, TIER, catName, freedPer, gi, goalPer, nicotineOn, paydays, paychecksLeft, phaseInfo, pouchesToday, subStep } from '@/lib/logic';
+import { CATN, FOLDERS, R, TIER, catName, freedPer, gi, goalPer, installments, nicotineOn, paydays, paydaysFrom, paychecksLeft, phaseInfo, pouchesToday, startAfter, subStep, waitsFor } from '@/lib/logic';
 import type { CatId, Folder, State, Tier } from '@/lib/types';
 import { Keypad, useLf } from './ui';
 
@@ -510,10 +510,13 @@ function GoalSheet() {
   const num = (v: string) => parseFloat(String(v).replace(/[$,]/g, '')) || 0;
   const target = num(e.target), saved = num(e.saved), rem = Math.max(0, target - saved), n = parseInt(e.n, 10) || 0, per = num(e.per);
   const canPace = s.incomes.length > 0;
-  const days = canPace ? paydays(s, Math.max(1, Math.min(n, 260))) : [];
+  const start = canPace ? startAfter(s, e.after) : null, pred = e.after ? s.goals.find((x) => x.id === e.after) : null;
+  const days = start ? paydaysFrom(s, start, Math.max(1, Math.min(n, 260))) : [];
+  // Goals this one can wait for: savings goals not done, and not ones already waiting on this one.
+  const preds = s.goals.filter((x) => x.kind === 'save' && x.status !== 'done' && x.id !== e.id && !(e.id && waitsFor(s, x.id, e.id)));
   const pacePer = n >= 1 ? Math.ceil(rem / n) : 0;
   const fixedN = per > 0 ? Math.ceil(rem / per) : 0;
-  const ok = !!e.name.trim() && target > 0 && (!isSave || (e.mode === 'pace' ? canPace && n >= 1 : true));
+  const ok = !!e.name.trim() && target > 0 && (!isSave || (e.mode === 'pace' ? canPace && n >= 1 && !!start : true));
   const set = (k: 'name' | 'target' | 'saved' | 'per') => (ev: React.ChangeEvent<HTMLInputElement>) => { const v = ev.target.value; patch((x) => ({ gd: { ...x.gd!, [k]: v } })); };
   const fieldL = { font: '500 9.5px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' } as const;
   const money = (label: string, value: string, k: 'target' | 'saved' | 'per', ph = '0') => (
@@ -535,6 +538,16 @@ function GoalSheet() {
         {money('TARGET', e.target, 'target')}
         {isSave && money('ALREADY SAVED', e.saved, 'saved')}
       </div>
+      {isSave && canPace && preds.length > 0 && (
+        <>
+          <span className="lbl">STARTS</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className={'chip' + (!e.after ? ' on' : '')} onClick={() => upd((x) => { x.gd!.after = null; })}>Right away</button>
+            {preds.map((x) => <button key={x.id} className={'chip' + (e.after === x.id ? ' on' : '')} onClick={() => upd((y) => { y.gd!.after = x.id; })}>After {x.name}</button>)}
+          </div>
+          {pred && <span className="cap8" style={{ lineHeight: 1.5 }}>{start ? `FIRST INSTALLMENT ${U(D.wdmy(start))} · THE PAYCHECK AFTER ${U(pred.name)} IS DONE` : `WAITS UNTIL ${U(pred.name)} HAS A FINISH DATE`}</span>}
+        </>
+      )}
       {isSave && (
         <>
           <span className="lbl">FUND IT</span>
@@ -547,10 +560,13 @@ function GoalSheet() {
           {e.mode === 'pace' && !canPace && (
             <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 13, lineHeight: 1.45, color: 'var(--ink2)' }}>Set up your pay under Money → Income and bills first. A deadline is counted in paychecks.</div>
           )}
-          {e.mode === 'pace' && canPace && (
+          {e.mode === 'pace' && canPace && !start && (
+            <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 13, lineHeight: 1.45, color: 'var(--ink2)' }}>A deadline needs a start date. Give {pred?.name || 'the other goal'} an amount each paycheck first, or use a fixed amount.</div>
+          )}
+          {e.mode === 'pace' && canPace && !!start && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={fieldL}>PAYCHECKS TO GET THERE</span><span style={{ fontSize: 13, color: 'var(--ink2)' }}>{n >= 1 ? `Last one ${D.wdmy(days[days.length - 1])}` : 'At least 1'}</span></span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={fieldL}>{pred ? 'PAYCHECKS ONCE IT STARTS' : 'PAYCHECKS TO GET THERE'}</span><span style={{ fontSize: 13, color: 'var(--ink2)' }}>{n >= 1 ? `Last one ${D.wdmy(days[days.length - 1])}` : 'At least 1'}</span></span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <button aria-label="Fewer paychecks" style={stepBtn} onClick={() => stepN(-1)}>−</button>
                   <input className="field" value={e.n} onChange={(ev) => { const v = ev.target.value.replace(/\D/g, ''); patch((x) => ({ gd: { ...x.gd!, n: v } })); }} inputMode="numeric" aria-label="Paychecks" style={{ width: 62, height: 44, padding: 0, textAlign: 'center', font: '600 16px/1 var(--f-text)' }} />
@@ -559,14 +575,14 @@ function GoalSheet() {
               </div>
               <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}><span className="disp" style={{ fontSize: 34, lineHeight: 0.85 }}>{usd(pacePer, 0)}</span><span style={{ font: '600 10px/1 var(--f-mono)', letterSpacing: '.06em' }}>A PAYCHECK · {n} {n === 1 ? 'PAYCHECK' : 'PAYCHECKS'}</span></span>
-                <span style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>Recalculated every paycheck from what&apos;s left, so extra money or a skipped paycheck spreads over the rest automatically. Set any single installment under Goals → Installments.</span>
+                <span style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>Recalculated every paycheck from what&apos;s left, so extra money or a skipped paycheck spreads over the rest automatically. Change single paychecks on Money → Budget.</span>
               </div>
             </>
           )}
           {e.mode === 'fixed' && (
             <>
               {money('EACH PAYCHECK', e.per, 'per')}
-              {per > 0 && rem > 0 && canPace && <span className="cap8">REACHED IN {fixedN} {fixedN === 1 ? 'PAYCHECK' : 'PAYCHECKS'} · {U(D.wdmy(paydays(s, Math.min(fixedN, 520))[Math.min(fixedN, 520) - 1]))}</span>}
+              {per > 0 && rem > 0 && start && <span className="cap8">REACHED IN {fixedN} {fixedN === 1 ? 'PAYCHECK' : 'PAYCHECKS'} · {U(D.wdmy(paydaysFrom(s, start, Math.min(fixedN, 520))[Math.min(fixedN, 520) - 1]))}</span>}
             </>
           )}
         </>
@@ -595,10 +611,20 @@ function CatSheet() {
         </div>
       </div>
       <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>
-        {spent ? 'This item has spending this paycheck, so it can be deleted after your next payday. ' : ''}The same amount is set aside every paycheck, starting with your next review. Unspent money rolls over to the next paycheck. To use it this paycheck too, tap “Use these amounts for this paycheck too” on the Budget plan.
+        This amount goes in every paycheck from your next review; change single paychecks on the budget table. Unspent money rolls over.
       </div>
+      {e.merge && (
+        <>
+          <span className="lbl">MERGE {U(catName(s, e.id!))} INTO</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {s.period.cats.filter((c) => c.id !== e.id).map((c) => <button key={c.id} className="chip" onClick={() => upd((x) => R.delCat(x, c.id))}>{catName(s, c.id)}</button>)}
+          </div>
+          <span className="cap8" style={{ lineHeight: 1.5 }}>ITS EXPENSES, SUBSCRIPTIONS, THIS PAYCHECK&apos;S MONEY AND ROLLOVER MOVE THERE</span>
+        </>
+      )}
       <div style={{ display: 'flex', gap: 10 }}>
-        {!!e.id && <button className={'btn-fill' + (spent ? ' dim' : '')} disabled={spent} onClick={() => upd((x) => R.delCat(x))} style={{ height: 54, padding: '0 20px', borderRadius: 18, font: '600 15px/1 var(--f-text)', opacity: spent ? 0.35 : 1 }}>Delete</button>}
+        {!!e.id && !spent && <button className="btn-fill" onClick={() => upd((x) => R.delCat(x))} style={{ height: 54, padding: '0 18px', borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Delete</button>}
+        {!!e.id && s.period.cats.length > 1 && !e.merge && <button className="btn-fill" onClick={() => upd((x) => { x.cd!.merge = true; })} style={{ height: 54, padding: '0 18px', borderRadius: 18, font: '600 15px/1 var(--f-text)' }}>Merge…</button>}
         <button className={'btn' + (ok ? '' : ' dim')} style={{ flex: 1 }} onClick={() => upd((x) => R.saveCat(x))}>{e.id ? 'Save' : 'Add item'}</button>
       </div>
     </Sheet>
@@ -879,11 +905,73 @@ function PinSheet() {
   );
 }
 
+// ---------------------------------------------------------------- Set several paychecks
+
+function FillSheet() {
+  const { s, upd, patch } = useLf();
+  const f = s.fd!, g = f.kind === 'goal' ? s.goals.find((x) => x.id === f.id) : null;
+  const name = g ? g.name : catName(s, f.id), amt = parseFloat(String(f.amt).replace(/[$,]/g, '')) || 0, n = parseInt(f.n, 10) || 0;
+  const canForever = f.kind === 'cat' || (!!g && !g.pace);
+  const first = g ? startAfter(s, g.after) || s.incomes[0].next : s.incomes[0].next;
+  const days = paydaysFrom(s, f.from, Math.max(1, Math.min(n, 260)));
+  const stepFrom = (d: number) => upd((x) => {
+    const src = x.incomes[0], all = paydaysFrom(x, first, 260), i = all.indexOf(x.fd!.from);
+    if (src && i >= 0) x.fd!.from = all[Math.max(0, Math.min(all.length - 1, i + d))];
+  });
+  const stepN = (d: number) => upd((x) => { x.fd!.n = String(Math.max(1, Math.min(260, (parseInt(x.fd!.n, 10) || 0) + d))); });
+  const stepBtn = { width: 44, height: 44, border: 0, borderRadius: 14, background: 'var(--fill)', color: 'var(--ink)', font: '500 18px/1 var(--f-mono)', cursor: 'pointer' } as const;
+  const fieldL = { font: '500 9.5px/1 var(--f-mono)', letterSpacing: '.08em', color: 'var(--ink3)' } as const;
+  const ok = f.forever ? canForever : n >= 1;
+  return (
+    <Sheet>
+      <span className="lbl">{U(name)} · SET SEVERAL PAYCHECKS</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ ...fieldL, flex: 1 }}>{g ? 'EACH INSTALLMENT' : 'EACH PAYCHECK'}</span>
+        <div style={{ position: 'relative', width: 150 }}>
+          <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', font: '600 16px/1 var(--f-text)', color: 'var(--ink3)' }}>$</span>
+          <input className="field" value={f.amt} onChange={(ev) => { const v = ev.target.value; patch((x) => ({ fd: { ...x.fd!, amt: v } })); }} placeholder="0" inputMode="decimal" aria-label="Amount each paycheck" style={{ height: 52, padding: '0 14px 0 28px', font: '600 18px/1 var(--f-text)', textAlign: 'right' }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={fieldL}>STARTING</span><span style={{ fontSize: 14.5, fontWeight: 500 }}>{D.wdmy(f.from)}</span></span>
+        <div style={{ display: 'flex', gap: 2 }}>
+          <button aria-label="Earlier paycheck" style={stepBtn} onClick={() => stepFrom(-1)}>‹</button>
+          <button aria-label="Later paycheck" style={stepBtn} onClick={() => stepFrom(1)}>›</button>
+        </div>
+      </div>
+      {canForever && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', padding: 3, borderRadius: 24, background: 'var(--fill)', boxShadow: 'inset 0 0 0 1px var(--line)' }}>
+          {([[false, 'For a number'], [true, 'Every paycheck on']] as const).map(([id, label]) => {
+            const on = f.forever === id;
+            return <button key={label} onClick={() => upd((x) => { x.fd!.forever = id; })} style={{ height: 42, border: 0, borderRadius: 21, background: on ? 'var(--ink)' : 'none', color: on ? 'var(--inv)' : 'var(--ink2)', font: `${on ? 600 : 500} 13.5px/1 var(--f-text)`, cursor: 'pointer' }}>{label}</button>;
+          })}
+        </div>
+      )}
+      {!f.forever && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span style={fieldL}>PAYCHECKS</span><span style={{ fontSize: 13, color: 'var(--ink2)' }}>{n >= 1 ? `Through ${D.wdmy(days[days.length - 1])}` : 'At least 1'}</span></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <button aria-label="Fewer paychecks" style={stepBtn} onClick={() => stepN(-1)}>−</button>
+            <input className="field" value={f.n} onChange={(ev) => { const v = ev.target.value.replace(/\D/g, ''); patch((x) => ({ fd: { ...x.fd!, n: v } })); }} inputMode="numeric" aria-label="Number of paychecks" style={{ width: 62, height: 44, padding: 0, textAlign: 'center', font: '600 16px/1 var(--f-text)' }} />
+            <button aria-label="More paychecks" style={stepBtn} onClick={() => stepN(1)}>+</button>
+          </div>
+        </div>
+      )}
+      <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--fill)', fontSize: 12.5, lineHeight: 1.45, color: 'var(--ink2)', textWrap: 'pretty' }}>
+        {f.forever
+          ? `${usd(amt, 0)} every paycheck from ${D.wdmy(f.from)}. Paychecks before that keep what they have now.`
+          : `${usd(amt, 0)} × ${n} = ${usd(amt * n, 0)}.` + (g?.pace ? ' The other paychecks before the deadline rebalance around these.' : '')}
+      </div>
+      <button className={'btn' + (ok ? '' : ' dim')} onClick={() => upd((x) => R.fill(x))}>{f.forever ? 'Set from then on' : `Set ${n} ${n === 1 ? 'paycheck' : 'paychecks'}`}</button>
+    </Sheet>
+  );
+}
+
 export function Sheets() {
   const { s, upd } = useLf();
   const sh = s.sheet;
   if (!sh) return null;
-  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; x.xd = null; x.ie = null; x.tb = null; x.td = null; x.pd = null; x.wd = null; x.dd = null; });
+  const close = () => upd((x) => { if (x.sheet === 'place' && x.pl) x.toast = { t: `${usd(x.pl.amt)} waiting in Unassigned` }; x.sheet = null; x.pr = null; x.pl = null; x.ed = null; x.ph = null; x.sb = null; x.gd = null; x.cd = null; x.xe = null; x.xd = null; x.ie = null; x.tb = null; x.td = null; x.pd = null; x.wd = null; x.dd = null; x.fd = null; });
   return (
     <>
       <div className="scrim" onClick={close} />
@@ -908,6 +996,7 @@ export function Sheets() {
       {sh === 'weigh' && s.wd && <WeighSheet />}
       {sh === 'doc' && s.dd && <DocSheet />}
       {sh === 'pin' && <PinSheet />}
+      {sh === 'fill' && s.fd && <FillSheet />}
     </>
   );
 }
