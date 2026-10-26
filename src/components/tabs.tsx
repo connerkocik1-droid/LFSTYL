@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import * as D from '@/lib/dates';
 import { num, r2, sg, split, sum, u0, usd } from '@/lib/format';
-import { CATN, FOLDERS, R, TIER, catName, dueInstallments, paycheckLeft, expiryState, freedPer, safeToSpend, gi, goalPer, installments, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
+import { CATN, FOLDERS, R, TIER, catName, dueInstallments, paycheckLeft, periodFrom, planCatOn, expiryState, freedPer, safeToSpend, gi, goalPer, installments, idleDays, limitOn, nextP, nicotineOn, paychecksLeft, phaseInfo, planCat, pouchesToday, subMonthly, taskRel } from '@/lib/logic';
 import type { Doc, Goal, State } from '@/lib/types';
 import { Check, Hero, Lens, LensButton, MoneyBars, Sec, Switch, useLf } from './ui';
 
@@ -108,7 +108,7 @@ export function Today() {
 
       {dueInstallments(s).length > 0 && (
         <>
-          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', padding: '0 22px', margin: '0 0 8px' }}><span>INSTALLMENTS DUE</span><button onClick={() => upd((x) => { x.tab = 'goals'; x.view = null; })} style={{ margin: '-14px -12px -14px 0', height: 40, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>ALL →</button></div>
+          <div className="lbl" style={{ display: 'flex', justifyContent: 'space-between', padding: '0 22px', margin: '0 0 8px' }}><span>INSTALLMENTS DUE</span><button onClick={() => upd((x) => { x.tab = 'money'; x.view = null; })} style={{ margin: '-14px -12px -14px 0', height: 40, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>ALL →</button></div>
           <DueList style={{ margin: '0 14px 12px' }} />
         </>
       )}
@@ -356,25 +356,17 @@ export function Money() {
       </div>
       {cur ? (
         <>
-          {m.p.goals.length > 0 && <><Sec l="GOAL CONTRIBUTIONS" r={usd(m.goalsT)} />
-          <div className="pane list">
-            {m.p.goals.map((pg, i) => (
-              <div key={pg.id} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, padding: '0 16px 0 18px' }}>
-                {i > 0 && <div className="sep" />}
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '8px 0' }}><span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 15 }}><span className="dia" />{gName(pg.id)}</span>{(pg.due || 0) > 0 && <span className="cap">{pg.due === pg.a ? 'NOT PAID YET' : `${usd(pg.due!)} NOT PAID YET`}</span>}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ font: '600 15px/1 var(--f-text)' }}>{usd(pg.a)}</span>
-                </span>
-              </div>
-            ))}
-          </div></>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px 0 22px', margin: '22px 0 4px' }}>
+            <span className="lbl">BUDGET · BY PAYCHECK</span>
+            {src && <span style={{ display: 'flex' }}>
+              <button onClick={() => upd((x) => R.openCat(x, null))} style={{ height: 44, padding: '0 10px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ ITEM</button>
+              <button onClick={() => upd((x) => R.openGoal(x, null))} style={{ height: 44, padding: '0 10px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ GOAL</button>
+            </span>}
+          </div>
+          {src ? <BudgetTable /> : <div className="pane mx" style={{ padding: '16px 18px', color: 'var(--ink2)', fontSize: 14, lineHeight: 1.45 }}>Add your pay below to plan each paycheck here: your budget items and goals, side by side.</div>}
           {m.p.bills.length > 0 && <><Sec l="TAKEN OFF THE TOP" r={usd(m.billsT)} />
           <BillList bills={m.p.bills} h={50} /></>}
-          <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'plan' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '10px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
-            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Budget plan</span><span className="cap">{`CATEGORIES ${usd(sum(m.cats, (c) => planCat(s, c.id)), 0)} · GOALS ${usd(sum(s.goals.filter((g) => g.status !== 'done' && g.kind !== 'proj'), (g) => goalPer(s, g)), 0)} A PAYCHECK`}</span></span>
-            <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
-          </button>
-          <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'setup' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '8px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
+          <button className="btn-fill" onClick={() => upd((x) => { x.view = { k: 'setup' }; })} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 28px)', margin: '22px 14px 0', minHeight: 54, padding: '0 16px 0 18px', borderRadius: 16 }}>
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}><span style={{ font: '600 14.5px/1 var(--f-text)' }}>Income and bills</span><span className="cap">{src ? 'PAY ' + usd(src.amt, 0) + ' ' + D.SL[src.sched] + ' · ' + s.billsDef.length + ' BILLS' : 'SET UP YOUR PAY AND BILLS'}</span></span>
             <span style={{ font: '500 14px/1 var(--f-mono)', color: 'var(--ink2)' }}>→</span>
           </button>
@@ -449,21 +441,22 @@ function CellField({ value, edited, label, onCommit }: { value: number; edited: 
   );
 }
 
-/** Every savings goal on one table: a row per paycheck, a column per goal. Each cell is that paycheck's installment,
- *  with what the goal still needs after it. Under each date, what that paycheck has left once bills, budget items
- *  and goals are taken out. */
-function GoalTable() {
+/** The budget, paycheck by paycheck: a row per paycheck, a column per budget item and per savings goal. Every amount
+ *  can be changed; under each date is what that paycheck has left after bills, budget items and goals. */
+function BudgetTable() {
   const { s, m, upd } = useLf();
   const [limit, setLimit] = useState(26);
   const src = s.incomes[0];
+  const cats = s.period.cats;
   const plans = s.goals.filter((g) => g.kind === 'save' && g.status !== 'done').map((g) => ({ g, plan: installments(s, g) }));
   const acctPer = sum(s.goals.filter((g) => g.kind === 'acct' && g.status !== 'done'), (g) => g.per);
   const horizon = plans.reduce((h, { g, plan }) => { const e = g.pace ? (plan.finish && plan.finish > g.pace.dueBy ? plan.finish : g.pace.dueBy) : plan.finish || (plan.rows.length ? plan.rows[plan.rows.length - 1].date : ''); return e > h ? e : h; }, src.next);
   const all: string[] = [];
-  // At least 6 rows, so a goal without an amount yet can be planned by hand.
+  // At least 6 rows, so the budget always looks ahead and a goal without an amount yet can be planned by hand.
   for (let d = src.next, k = 0; (d <= horizon || k < 6) && k < 260; d = D.step(d, src.sched), k++) all.push(d);
   const dates = all.slice(0, limit);
   const cell = (g: Goal, plan: ReturnType<typeof installments>, d: string) => {
+    if (plan.waiting || (plan.start && d < plan.start)) return { amt: 0, edited: false, open: false };
     const r = plan.rows.find((x) => x.date === d);
     if (r) return { amt: r.amt, edited: r.edited, open: true };
     return { amt: 0, edited: g.inst?.[d] != null, open: g.pace ? d <= g.pace.dueBy : !plan.finish || d <= plan.finish };
@@ -473,6 +466,7 @@ function GoalTable() {
   const bal = plans.map(({ g }, i) => r2(Math.max(0, g.target - g.saved - (pgs[i]?.due || 0))));
   const nowBal = bal.slice();
   const leftCap = (n: number) => <span className={'gt-sub' + (n < -0.004 ? ' gt-short' : '')}>{n < -0.004 ? `${u0(-n)} OVER` : `${u0(n)} LEFT`}</span>;
+  const goalOf = (id: string) => s.goals.find((x) => x.id === id);
   return (
     <>
       <div className="pane gt-wrap">
@@ -480,61 +474,74 @@ function GoalTable() {
           <thead>
             <tr>
               <th className="gt-d">PAYCHECK</th>
+              <th>AFTER<br />BILLS</th>
+              {cats.map((c) => (
+                <th key={c.id} className="gt-cat">
+                  <button onClick={() => upd((x) => R.openCat(x, c.id))}>{catName(s, c.id)}</button>
+                  <span className="gt-sub">{usd(planCat(s, c.id), 0)} USUALLY</span>
+                  <button className="gt-link" onClick={() => upd((x) => R.openFill(x, 'cat', c.id))}>SET SEVERAL</button>
+                </th>
+              ))}
               {plans.map(({ g, plan }) => (
                 <th key={g.id}>
                   <button onClick={() => upd((x) => { x.view = { k: 'goal', id: g.id }; })}>{g.name}</button>
                   <span className="gt-sub">{u0(Math.max(0, g.target - g.saved))} TO GO</span>
+                  {g.after && <span className="gt-sub">{plan.waiting ? `AFTER ${U(goalOf(g.after)?.name || 'GOAL')}` : `FROM ${U(D.dm(plan.start!))} ${plan.start!.slice(2, 4)}`}</span>}
+                  {!plan.waiting && <button className="gt-link" onClick={() => upd((x) => R.openFill(x, 'goal', g.id))}>SET SEVERAL</button>}
                   {plan.rows.some((r) => r.edited) && <button className="gt-link" onClick={() => upd((x) => R.resetInstallments(x, g.id))} aria-label={`Put ${g.name} back on automatic`}>↺ AUTO</button>}
                 </th>
               ))}
-              <th className="gt-t">GOALS</th>
             </tr>
           </thead>
           <tbody>
-            {pgs.some(Boolean) && (
-              <tr className="gt-now">
-                <td className="gt-d"><b>Current</b><span>{U(D.dm(s.period.start))} {s.period.start.slice(0, 4)}</span>{leftCap(m.unassigned)}</td>
-                {plans.map(({ g }, i) => {
-                  const pg = pgs[i];
-                  return <td key={g.id}>{!pg ? <span className="gt-na">—</span> : (pg.due || 0) > 0
-                    ? <><CellField label={`${g.name} this paycheck`} value={pg.due!} edited={false} onCommit={(v) => upd((x) => R.setDue(x, g.id, v ?? pg.due!))} /><span className="gt-sub">{nowBal[i] > 0.004 ? `${u0(nowBal[i])} TO GO` : 'DONE'}</span><button className="gt-link" onClick={() => upd((x) => R.payInstallment(x, g.id))} aria-label={`Mark ${g.name} installment paid`}>MARK PAID</button></>
-                    : <><span className="gt-ok">✓ {u0(pg.a)}</span><span className="gt-sub">PAID</span></>}</td>;
-                })}
-                <td className="gt-t">{u0(sum(pgs, (pg) => pg?.a || 0))}</td>
-              </tr>
-            )}
+            <tr className="gt-now">
+              <td className="gt-d"><b>Current</b><span>{U(D.dm(s.period.start))} {s.period.start.slice(0, 4)}</span>{leftCap(m.unassigned)}</td>
+              <td>{u0(m.p.pay + m.p.extra - m.billsT)}</td>
+              {m.cats.map((c) => (
+                <td key={c.id}><CellField label={`${c.name} this paycheck`} value={c.alloc} edited={false} onCommit={(v) => upd((x) => R.setAlloc(x, c.id, v ?? c.alloc))} /><span className={'gt-sub' + (c.left < -0.004 ? ' gt-short' : '')}>{c.left < -0.004 ? `${u0(-c.left)} OVER` : `${u0(c.left)} TO SPEND`}</span></td>
+              ))}
+              {plans.map(({ g }, i) => {
+                const pg = pgs[i];
+                return <td key={g.id}>{!pg ? <span className="gt-na">—</span> : (pg.due || 0) > 0
+                  ? <><CellField label={`${g.name} this paycheck`} value={pg.due!} edited={false} onCommit={(v) => upd((x) => R.setDue(x, g.id, v ?? pg.due!))} /><span className="gt-sub">{nowBal[i] > 0.004 ? `${u0(nowBal[i])} TO GO` : 'DONE'}</span><button className="gt-link" onClick={() => upd((x) => R.payInstallment(x, g.id))} aria-label={`Mark ${g.name} installment paid`}>MARK PAID</button></>
+                  : <><span className="gt-ok">✓ {u0(pg.a)}</span><span className="gt-sub">PAID</span></>}</td>;
+              })}
+            </tr>
             {dates.map((d) => {
-              const cells = plans.map(({ g, plan }) => cell(g, plan, d)), t = sum(cells, (c) => c.amt);
+              const n = periodFrom(s, d), cells = plans.map(({ g, plan }) => cell(g, plan, d)), t = sum(cells, (c) => c.amt);
               return (
                 <tr key={d}>
                   <td className="gt-d"><b>{D.dm(d)}</b><span>{D.wd(d).toUpperCase()} {d.slice(0, 4)}</span>{leftCap(paycheckLeft(s, d, t + acctPer))}</td>
+                  <td>{u0(r2(n.pay - sum(n.bills, (b) => b.a)))}</td>
+                  {cats.map((c) => <td key={c.id}><CellField label={`${catName(s, c.id)} ${D.dmy(d)}`} value={planCatOn(s, c.id, d)} edited={s.plan?.byDate?.[d]?.[c.id] != null} onCommit={(v) => upd((x) => R.setCatOn(x, c.id, d, v))} /></td>)}
                   {plans.map(({ g }, i) => {
                     if (!cells[i].open) return <td key={g.id}><span className="gt-na">—</span></td>;
                     bal[i] = r2(Math.max(0, bal[i] - cells[i].amt));
                     return <td key={g.id}><CellField label={`${g.name} ${D.dmy(d)}`} value={cells[i].amt} edited={cells[i].edited} onCommit={(v) => upd((x) => R.setInstallment(x, g.id, d, v))} /><span className="gt-sub">{bal[i] > 0.004 ? `${u0(bal[i])} TO GO` : 'DONE'}</span></td>;
                   })}
-                  <td className="gt-t">{u0(t)}</td>
                 </tr>
               );
             })}
           </tbody>
-          <tfoot>
-            <tr>
-              <td className="gt-d"><b>Done</b></td>
-              {plans.map(({ g, plan }) => <td key={g.id}><span className={plan.short > 0.004 && g.pace ? 'gt-short' : ''}>{plan.short > 0.004 && g.pace ? <>{u0(plan.short)}<br />SHORT</> : plan.finish ? <>{D.dm(plan.finish)}<br />{plan.finish.slice(0, 4)}</> : '—'}</span></td>)}
-              <td className="gt-t" />
-            </tr>
-            <tr>
-              <td className="gt-d"><b>Frees</b></td>
-              {plans.map(({ g, plan }) => <td key={g.id}><span>{plan.freeFrom ? <>+{u0(plan.frees)}<br />{D.dm(plan.freeFrom)} {plan.freeFrom.slice(2, 4)}</> : '—'}</span></td>)}
-              <td className="gt-t" />
-            </tr>
-          </tfoot>
+          {plans.length > 0 && (
+            <tfoot>
+              <tr>
+                <td className="gt-d"><b>Done</b></td>
+                <td colSpan={1 + cats.length} />
+                {plans.map(({ g, plan }) => <td key={g.id}><span className={plan.short > 0.004 && g.pace && !plan.waiting ? 'gt-short' : ''}>{plan.waiting ? 'WAITING' : plan.short > 0.004 && g.pace ? <>{u0(plan.short)}<br />SHORT</> : plan.finish ? <>{D.dm(plan.finish)}<br />{plan.finish.slice(0, 4)}</> : '—'}</span></td>)}
+              </tr>
+              <tr>
+                <td className="gt-d"><b>Frees</b></td>
+                <td colSpan={1 + cats.length} />
+                {plans.map(({ g, plan }) => <td key={g.id}><span>{plan.freeFrom ? <>+{u0(plan.frees)}<br />{D.dm(plan.freeFrom)} {plan.freeFrom.slice(2, 4)}</> : '—'}</span></td>)}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
       {all.length > dates.length && <button className="btn-fill" onClick={() => setLimit(limit + 26)} style={{ width: 'calc(100% - 28px)', margin: '10px 14px 0', height: 48, borderRadius: 16, font: '600 14px/1 var(--f-text)' }}>Show {Math.min(26, all.length - dates.length)} more paychecks</button>}
       <div style={{ padding: '10px 22px 0', font: '500 9.5px/1.55 var(--f-mono)', letterSpacing: '.05em', color: 'var(--ink3)', textWrap: 'pretty' }}>
-        UNDER EACH DATE: WHAT THAT PAYCHECK HAS LEFT AFTER BILLS, BUDGET ITEMS AND GOALS. UNDER EACH AMOUNT: WHAT THE GOAL STILL NEEDS. TAP AN AMOUNT TO CHANGE IT; DEADLINE GOALS REBALANCE THE REST. HIGHLIGHTED = SET BY YOU, CLEAR IT FOR AUTOMATIC.
+        UNDER EACH DATE: WHAT THAT PAYCHECK HAS LEFT AFTER BILLS, BUDGET ITEMS AND GOALS. TAP AN AMOUNT TO CHANGE ONE PAYCHECK, OR SET SEVERAL TO LOCK AN AMOUNT FOR A RUN OF PAYCHECKS. DEADLINE GOALS REBALANCE THE REST. HIGHLIGHTED = SET FOR THAT PAYCHECK; CLEAR IT TO GO BACK. TAP A NAME TO RENAME, MERGE OR EDIT IT.
       </div>
     </>
   );
@@ -593,7 +600,24 @@ export function Goals() {
           <button onClick={() => upd((x) => R.openGoal(x, null))} style={{ height: 44, padding: '0 12px', border: 0, background: 'none', color: 'var(--ink)', font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.1em', cursor: 'pointer' }}>+ NEW GOAL</button>
         </span>
       </div>
-      {table && <GoalTable />}
+      {table && (
+        <div className="pane list" style={{ margin: '0 14px' }}>
+          {live.filter((g) => g.kind === 'save').map((g, i) => {
+            const plan = installments(s, g), info = gi(s, g);
+            return (
+              <button key={g.id} onClick={() => upd((x) => { x.view = { k: 'goal', id: g.id }; })} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', minHeight: 62, padding: '8px 16px 8px 18px', border: 0, background: 'none', color: 'var(--ink)', textAlign: 'left', cursor: 'pointer' }}>
+                {i > 0 && <span className="sep" />}
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 15, fontWeight: 500 }}><span className="dia" />{g.name}</span>
+                  <span className="cap">{plan.waiting ? `AFTER ${U(s.goals.find((x) => x.id === g.after)?.name || 'GOAL')}` : plan.finish ? `DONE ${U(D.dmy(plan.finish))}` + (g.after && plan.start ? ` · FROM ${U(D.dmy(plan.start))}` : '') : plan.short > 0.004 ? `${u0(plan.short)} SHORT` : 'NO INSTALLMENTS'}</span>
+                </span>
+                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flex: 'none' }}><span style={{ font: '600 15px/1 var(--f-text)' }}>{u0(info.rem)}</span><span className="cap">TO GO</span></span>
+              </button>
+            );
+          })}
+          <button onClick={() => upd((x) => { x.tab = 'money'; x.view = null; })} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', minHeight: 52, padding: '0 16px 0 18px', border: 0, background: 'none', color: 'var(--ink)', cursor: 'pointer' }}><span className="sep" /><span className="cap8">PLAN EACH PAYCHECK ON THE BUDGET TABLE</span><span style={{ font: '600 10.5px/1 var(--f-mono)', letterSpacing: '.08em' }}>MONEY →</span></button>
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 14px', marginTop: table && cards.length ? 14 : 0 }}>
         {cards.map((g) => {
           const info = gi(s, g), proj = g.kind === 'proj' ? s.projects.find((p) => p.goal === g.id) : null;

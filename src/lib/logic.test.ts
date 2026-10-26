@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { r2 } from './format';
-import { R, paycheckLeft, archivable, catchUp, dueInstallments, expensesCsv, installments, chargeSubs, goalPer, initial, money, nextP, paychecksLeft, paydays, rvUn, safeToSpend } from './logic';
+import { R, paycheckLeft, planCatOn, startAfter, archivable, catchUp, dueInstallments, expensesCsv, installments, chargeSubs, goalPer, initial, money, nextP, paychecksLeft, paydays, rvUn, safeToSpend } from './logic';
 import { SEED_TODAY, freshUI, seedData } from './seed';
 import type { Goal, State } from './types';
 
@@ -44,7 +44,7 @@ describe('money', () => {
 
   it('does not call a new account over budget', () => {
     const s = initial('2026-10-22');
-    s.draft = { amt: '20', cat: 'groc', note: '', y: false };
+    s.draft = { amt: '20', cat: 'food', note: '', y: false };
     R.logExpense(s);
     const m = money(s);
     expect(m.unassigned).toBe(0);
@@ -129,9 +129,9 @@ describe('placing unassigned money', () => {
     const s = paid();
     s.goals.push(goal());
     R.openPlace(s, 300);
-    s.pl!.split = { 'c:groc': '100', 'g:trip': '150' };
+    s.pl!.split = { 'c:food': '100', 'g:trip': '150' };
     R.place(s);
-    expect(s.period.cats.find((c) => c.id === 'groc')!.alloc).toBe(100);
+    expect(s.period.cats.find((c) => c.id === 'food')!.alloc).toBe(100);
     expect(s.goals[0].saved).toBe(1330);
     expect(s.period.goals).toEqual([{ id: 'trip', a: 150 }]);
     expect(money(s).unassigned).toBe(750);
@@ -140,7 +140,7 @@ describe('placing unassigned money', () => {
   it('refuses to place more than there is', () => {
     const s = paid();
     R.openPlace(s, 300);
-    s.pl!.split = { 'c:groc': '200', 'c:gas': '101' };
+    s.pl!.split = { 'c:food': '200', 'c:gas': '101' };
     R.place(s);
     expect(money(s).unassigned).toBe(1000);
     expect(s.sheet).toBe('place');
@@ -159,11 +159,11 @@ describe('placing unassigned money', () => {
     const s = paid();
     s.goals.push(goal());
     R.openPlace(s, 300);
-    s.pl!.split = { 'c:groc': '100', 'g:trip': '150' };
+    s.pl!.split = { 'c:food': '100', 'g:trip': '150' };
     R.place(s);
-    s.tb = { 'c:groc': '50', 'g:trip': '150' };
+    s.tb = { 'c:food': '50', 'g:trip': '150' };
     R.takeBack(s);
-    expect(s.period.cats.find((c) => c.id === 'groc')!.alloc).toBe(50);
+    expect(s.period.cats.find((c) => c.id === 'food')!.alloc).toBe(50);
     expect(s.goals[0].saved).toBe(1180);
     expect(s.period.goals).toEqual([]);
     expect(money(s).unassigned).toBe(950);
@@ -172,11 +172,11 @@ describe('placing unassigned money', () => {
   it('takes nothing back when any amount is too much', () => {
     const s = paid();
     R.openPlace(s, 100);
-    s.pl!.split = { 'c:groc': '100' };
+    s.pl!.split = { 'c:food': '100' };
     R.place(s);
-    s.tb = { 'c:groc': '40', 'c:gas': '1' };
+    s.tb = { 'c:food': '40', 'c:gas': '1' };
     R.takeBack(s);
-    expect(s.period.cats.find((c) => c.id === 'groc')!.alloc).toBe(100);
+    expect(s.period.cats.find((c) => c.id === 'food')!.alloc).toBe(100);
   });
 });
 
@@ -471,5 +471,150 @@ describe('paycheck left', () => {
   it('counts the bills in that period only', () => {
     // 10 Nov – 23 Nov: car payment, internet, insurance, gym, phone = 515
     expect(paycheckLeft(demo(), '2026-11-10', 0)).toBe(r2(1840 - 515 - 610));
+  });
+});
+
+describe('starter categories', () => {
+  it('are Food, Gas, Fun and Savings', () => {
+    expect(initial('2026-10-22').period.cats.map((c) => c.id)).toEqual(['food', 'gas', 'fun', 'savings']);
+  });
+});
+
+describe('setting several paychecks at once', () => {
+  it('locks a goal amount for a run of paychecks; a deadline goal rebalances the rest', () => {
+    const s = paid(), g = goal({ target: 2000, saved: 0, pace: { dueBy: paydays(paid(), 10)[9] } });
+    s.goals.push(g);
+    R.openFill(s, 'goal', 'trip');
+    Object.assign(s.fd!, { amt: '100', n: '4' });
+    R.fill(s);
+    const rows = installments(s, g).rows;
+    expect(rows.slice(0, 4).every((r) => r.amt === 100 && r.edited)).toBe(true);
+    expect(rows.slice(4).map((r) => r.amt)).toEqual([267, 267, 267, 267, 267, 265]);
+    expect(s.sheet).toBe(null);
+  });
+
+  it('starts a run from a later paycheck', () => {
+    const s = paid(), g = goal({ target: 900, saved: 0, per: 100 });
+    s.goals.push(g);
+    R.openFill(s, 'goal', 'trip', paydays(s, 3)[2]);
+    Object.assign(s.fd!, { amt: '300', n: '2' });
+    R.fill(s);
+    expect(installments(s, g).rows.map((r) => r.amt)).toEqual([100, 100, 300, 300, 100]);
+  });
+
+  it('changes a fixed goal from a paycheck on, keeping the ones before', () => {
+    const s = paid(), g = goal({ target: 1000, saved: 0, per: 100 });
+    s.goals.push(g);
+    R.openFill(s, 'goal', 'trip', paydays(s, 3)[2]);
+    Object.assign(s.fd!, { amt: '200', forever: true });
+    R.fill(s);
+    expect(g.per).toBe(200);
+    expect(installments(s, g).rows.map((r) => r.amt)).toEqual([100, 100, 200, 200, 200, 200]);
+  });
+
+  it('sets a budget item for a run of paychecks, and the review uses it', () => {
+    const s = demo();
+    R.openFill(s, 'cat', 'fun');
+    Object.assign(s.fd!, { amt: '20', n: '2' });
+    R.fill(s);
+    expect(planCatOn(s, 'fun', '2026-10-27')).toBe(20);
+    expect(planCatOn(s, 'fun', '2026-11-10')).toBe(20);
+    expect(planCatOn(s, 'fun', '2026-11-24')).toBe(70);
+    expect(paycheckLeft(s, '2026-10-27', 245)).toBe(155);
+    s.today = '2026-10-27';
+    catchUp(s);
+    R.openReview(s);
+    expect(s.rv!.cats.fun).toBe(20);
+    R.confirmReview(s);
+    expect(Object.keys(s.plan!.byDate!)).toEqual(['2026-11-10']);
+  });
+
+  it('changes a budget item from a paycheck on', () => {
+    const s = demo();
+    R.openFill(s, 'cat', 'gas', '2026-11-24');
+    Object.assign(s.fd!, { amt: '150', forever: true });
+    R.fill(s);
+    expect(['2026-10-27', '2026-11-10', '2026-11-24', '2026-12-08'].map((d) => planCatOn(s, 'gas', d))).toEqual([120, 120, 150, 150]);
+  });
+});
+
+describe('goals that start after another', () => {
+  function twoGoals() {
+    const s = paid();
+    const japan = goal({ id: 'japan', target: 600, saved: 0, per: 200 });
+    const home = goal({ id: 'home', name: 'Home savings', target: 1000, saved: 0, per: 250, after: 'japan' });
+    s.goals.push(japan, home);
+    return { s, japan, home };
+  }
+
+  it('waits for the first goal and starts the paycheck after it is done', () => {
+    const { s, japan, home } = twoGoals();
+    expect(installments(s, japan).finish).toBe('2026-12-04');
+    expect(startAfter(s, 'japan')).toBe('2026-12-18');
+    expect(installments(s, home).rows[0]).toEqual({ date: '2026-12-18', amt: 250, edited: false });
+    expect(goalPer(s, home)).toBe(0);
+  });
+
+  it('moves when the first goal finishes sooner', () => {
+    const { s, japan, home } = twoGoals();
+    japan.saved = 400;
+    expect(installments(s, home).start).toBe('2026-11-20');
+  });
+
+  it('starts right away once the first goal is closed', () => {
+    const { s, japan, home } = twoGoals();
+    japan.status = 'done';
+    expect(installments(s, home).start).toBe('2026-11-06');
+  });
+
+  it('counts a deadline from its own start', () => {
+    const { s } = twoGoals();
+    R.openGoal(s, null);
+    Object.assign(s.gd!, { name: 'Home savings 2', target: '1200', saved: '0', mode: 'pace', n: '4', after: 'japan' });
+    R.saveGoal(s);
+    const g = s.goals[s.goals.length - 1];
+    expect(g.after).toBe('japan');
+    expect(g.pace!.dueBy).toBe('2027-01-29');
+    expect(installments(s, g).rows.map((r) => [r.date, r.amt])).toEqual([['2026-12-18', 300], ['2027-01-01', 300], ['2027-01-15', 300], ['2027-01-29', 300]]);
+  });
+
+  it('waits with nothing planned while the first goal has no end', () => {
+    const { s, japan, home } = twoGoals();
+    japan.per = 0;
+    const p = installments(s, home);
+    expect(p.waiting).toBe(true);
+    expect(p.rows).toEqual([]);
+  });
+
+  it('refuses a goal waiting on itself through another', () => {
+    const { s } = twoGoals();
+    R.openGoal(s, 'japan');
+    s.gd!.after = 'home';
+    R.saveGoal(s);
+    expect(s.goals.find((g) => g.id === 'japan')!.after).toBeUndefined();
+  });
+});
+
+describe('budget items', () => {
+  it('merges a category with spending into another', () => {
+    const s = demo();
+    s.period.cats.push({ id: 'food', alloc: 0, roll: 0 });
+    s.catNames = { food: 'Food' };
+    R.openCat(s, 'eat');
+    R.delCat(s, 'groc');
+    const m = money(s), groc = m.cats.find((c) => c.id === 'groc')!;
+    expect(m.cats.some((c) => c.id === 'eat')).toBe(false);
+    expect(groc.alloc).toBe(360);
+    expect(groc.spent).toBe(176.6);
+    expect(m.unassigned).toBe(225);
+    expect(s.expenses.filter((e) => e.cat === 'eat')).toEqual([]);
+  });
+
+  it('changes this paycheck for a category against Unassigned', () => {
+    const s = demo();
+    R.setAlloc(s, 'fun', 170);
+    expect(money(s).unassigned).toBe(125);
+    R.setAlloc(s, 'fun', 1000);
+    expect(s.period.cats.find((c) => c.id === 'fun')!.alloc).toBe(170);
   });
 });
